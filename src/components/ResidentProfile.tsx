@@ -348,24 +348,43 @@ export function ResidentProfile({
       await new Promise(r => setTimeout(r, 600));
       setScrubbingStatus(null);
       
-      const response = await fetch("/api/care-note", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input: scrubbedInput }),
-      });
-
-      const text = await response.text();
       let data;
       try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error(
-          "Action blocked by browser cookie settings. Please open this app in a new tab to authenticate and continue.",
-        );
-      }
+        const response = await fetch("/api/care-note", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input: scrubbedInput }),
+        });
 
-      if (!response.ok) {
-        throw new Error(data?.error || `Server error ${response.status}`);
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(
+            "Action blocked by browser cookie settings. Please open this app in a new tab to authenticate and continue.",
+          );
+        }
+
+        if (!response.ok) {
+          throw new Error(data?.error || `Server error ${response.status}`);
+        }
+      } catch (networkError: any) {
+        // Fallback to Gemini Nano (Chrome Built-in AI) if offline or fetch fails
+        if (typeof (window as any).ai !== 'undefined' && (window as any).ai.languageModel) {
+          try {
+            setScrubbingStatus('Network unavailable. Drafting locally using On-Device AI (Gemini Nano)...');
+            const session = await (window as any).ai.languageModel.create({
+              systemPrompt: "You are a professional aged care assistant. Rewrite the following raw caregiver input into a concise, professional clinical progress note. Provide ONLY the final English note, without markdown."
+            });
+            const nanoResult = await session.prompt(scrubbedInput);
+            data = { result: { englishNote: nanoResult + "\n\n(Note: Generated offline securely via On-Device AI)", nativeConfirmation: "" } };
+            setScrubbingStatus(null);
+          } catch (nanoError) {
+            throw networkError; // throw original error if Nano fails
+          }
+        } else {
+          throw networkError;
+        }
       }
 
       setCareNoteDraft(data.result.englishNote);
@@ -386,9 +405,40 @@ export function ResidentProfile({
       .substring(0, 2);
 
   const processFile = async (file: File) => {
-    // Show preview
+    // Show preview and compress image for Firestore (1MB limit)
     const reader = new FileReader();
-    reader.onload = (e) => setPhotoPreview(e.target?.result as string);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // Compress to JPEG with 0.7 quality
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        setPhotoPreview(dataUrl);
+      };
+      img.src = e.target?.result as string;
+    };
     reader.readAsDataURL(file);
 
     setIsUploading(true);
@@ -1198,11 +1248,27 @@ export function ResidentProfile({
                   </div>
                   
                   {nativeConfirmation && (
-                    <div className="mt-4 bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm">
-                      <div className="flex items-center gap-2 text-indigo-700 font-medium mb-1">
-                        <CheckCircle className="w-4 h-4" /> Native Translation Confirmation
+                    <div className="mt-4 bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm relative group">
+                      <div className="flex items-center justify-between text-indigo-700 font-medium mb-1">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" /> Native Translation Confirmation
+                        </div>
+                        <button
+                          onClick={() => {
+                            const utterance = new SpeechSynthesisUtterance(nativeConfirmation);
+                            // Optional: Try to detect language or just let the browser use the default system voice for the detected language
+                            window.speechSynthesis.speak(utterance);
+                          }}
+                          className="flex items-center gap-1.5 bg-white border border-indigo-200 text-indigo-600 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition-colors shadow-sm"
+                          title="Read aloud"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072M17.657 6.343a8 8 0 010 11.314M10.5 19.5L5 14.5H3a2 2 0 01-2-2v-3.5a2 2 0 012-2h2l5.5-5.5v16.5z" />
+                          </svg>
+                          <span className="font-medium">Read back</span>
+                        </button>
                       </div>
-                      <p className="text-indigo-800 leading-relaxed">
+                      <p className="text-indigo-800 leading-relaxed mt-2">
                         {nativeConfirmation}
                       </p>
                     </div>

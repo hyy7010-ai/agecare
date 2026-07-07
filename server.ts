@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import multer from 'multer';
 
 // Set up Multer for handling file uploads (in memory)
@@ -107,7 +107,21 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         },
         config: {
           responseMimeType: 'application/json',
-          temperature: 0.2
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              observationType: { type: Type.STRING },
+              observation: { type: Type.STRING },
+              estimatedSizeOrType: { type: Type.STRING },
+              colour: { type: Type.STRING },
+              bristolStoolType: { type: Type.STRING },
+              potentialRiskFlag: { type: Type.STRING },
+              suggestedCarePlan: { type: Type.STRING }
+            },
+            required: ["observationType", "observation", "potentialRiskFlag"]
+          },
+          temperature: 0.2,
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -200,7 +214,42 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
           ]
         },
         config: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              englishNote: { type: Type.STRING },
+              nativeConfirmation: { type: Type.STRING },
+              suggestedFollowUps: { 
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              sirsAssessment: {
+                type: Type.OBJECT,
+                nullable: true,
+                properties: {
+                  isReportable: { type: Type.BOOLEAN },
+                  category: { type: Type.STRING },
+                  priority: { type: Type.NUMBER },
+                  timeframe: { type: Type.STRING },
+                  actWarning: { type: Type.STRING },
+                  lockDowngrade: { type: Type.BOOLEAN },
+                  incidentTitle: { type: Type.STRING },
+                  autofillReport: {
+                    type: Type.OBJECT,
+                    properties: {
+                      whatHappened: { type: Type.STRING },
+                      immediateSafetyActions: { type: Type.STRING }
+                    },
+                    required: ["whatHappened", "immediateSafetyActions"]
+                  }
+                },
+                required: ["isReportable", "category", "priority", "timeframe", "actWarning", "lockDowngrade", "incidentTitle", "autofillReport"]
+              }
+            },
+            required: ["englishNote", "nativeConfirmation", "suggestedFollowUps"]
+          },
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -303,6 +352,33 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         model: 'gemini-2.5-flash',
         contents: { parts },
         config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isReportable: { type: Type.BOOLEAN },
+              category: { type: Type.STRING },
+              priority: { type: Type.NUMBER, nullable: true },
+              incidentTitle: { type: Type.STRING },
+              residentName: { type: Type.STRING },
+              confidenceScore: { type: Type.NUMBER },
+              uncertaintyFlag: { type: Type.STRING },
+              autofillReport: {
+                type: Type.OBJECT,
+                properties: {
+                  whatHappened: { type: Type.STRING },
+                  immediateSafetyActions: { type: Type.STRING },
+                  emergencyServicesNotified: { type: Type.BOOLEAN },
+                  familyNotified: { type: Type.BOOLEAN },
+                  gpNotified: { type: Type.BOOLEAN },
+                  regulatorNotification: { type: Type.STRING },
+                  preventiveActions: { type: Type.STRING }
+                },
+                required: ["whatHappened", "immediateSafetyActions", "emergencyServicesNotified", "familyNotified", "gpNotified", "regulatorNotification", "preventiveActions"]
+              }
+            },
+            required: ["isReportable", "category", "incidentTitle", "residentName", "autofillReport", "confidenceScore", "uncertaintyFlag"]
+          },
           tools: [{ googleSearch: {} }],
           temperature: 0.2
         }
@@ -387,7 +463,16 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              englishNote: { type: Type.STRING },
+              nativeConfirmation: { type: Type.STRING }
+            },
+            required: ["englishNote", "nativeConfirmation"]
+          },
+          tools: [{ googleSearch: {} }]
         }
       });
 

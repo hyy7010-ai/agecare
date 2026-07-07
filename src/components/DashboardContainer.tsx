@@ -166,6 +166,24 @@ export const DashboardContainer: React.FC = () => {
               const data = change.doc.data() as SIRSAlertData;
               if (data.priority === 1) {
                 setGlobalSirsAlert(data);
+                
+                // Trigger Browser Notification for FCM Demo
+                if ("Notification" in window && Notification.permission === "granted") {
+                  new Notification("🚨 P1 SIRS Event Detected", {
+                    body: data.message || "A high-priority incident requires immediate attention.",
+                    icon: "/favicon.ico", // Or any icon path
+                    requireInteraction: true
+                  });
+                } else if ("Notification" in window && Notification.permission !== "denied") {
+                  Notification.requestPermission().then(permission => {
+                    if (permission === "granted") {
+                      new Notification("🚨 P1 SIRS Event Detected", {
+                        body: data.message || "A high-priority incident requires immediate attention.",
+                        requireInteraction: true
+                      });
+                    }
+                  });
+                }
               }
             }
           });
@@ -449,7 +467,7 @@ export const DashboardContainer: React.FC = () => {
     );
   }
 
-  const canReviewRNQueue = isRN || isAdmin;
+  const canReviewRNQueue = isRN || isAdmin || isManager;
   const canAccessRoster = isManager || isAdmin;
   const canLogSirs = isCaregiver || isManager || isRN || isAdmin;
   const canDismissSirs = isManager || isAdmin;
