@@ -374,7 +374,7 @@ export function ResidentProfile({
           try {
             setScrubbingStatus('Network unavailable. Drafting locally using On-Device AI...');
             const session = await aiAPI.create({
-              systemPrompt: "You are a professional aged care assistant. Rewrite the following raw caregiver input into a concise, professional clinical progress note. Provide ONLY the final English note, without markdown."
+              systemPrompt: "You are a professional aged care assistant. Rewrite the following raw caregiver input into a concise, professional clinical progress note. Provide ONLY the final English note, without markdown.", initialPrompts: [{ role: 'system', content: "You are a professional aged care assistant. Rewrite the following raw caregiver input into a concise, professional clinical progress note. Provide ONLY the final English note, without markdown." }]
             });
             const nanoResult = await session.prompt(scrubbedInput);
             data = { result: { englishNote: nanoResult + "\n\n(Note: Generated offline securely via On-Device AI)", nativeConfirmation: "" } };

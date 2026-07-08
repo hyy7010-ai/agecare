@@ -3,6 +3,7 @@ import {
   User as FirebaseUser,
   onAuthStateChanged,
   signOut,
+  signInAnonymously,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
@@ -13,7 +14,7 @@ interface AuthContextType {
   userProfile: UserProfile | null;
   loading: boolean;
   logout: () => Promise<void>;
-  loginAsDemo: (role: UserRole) => void;
+  loginAsDemo: (role: UserRole) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,36 +63,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setLoading(false);
         return;
       }
-      unsubscribe = onAuthStateChanged(auth, async (user) => {
-        try {
-          setCurrentUser(user);
-
-          if (user) {
-            // Fetch or create user profile
-            const userRef = doc(db, "users", user.uid);
-            const docSnap = await getDoc(userRef);
-
-            if (docSnap.exists()) {
-              setUserProfile(docSnap.data() as UserProfile);
-            } else {
-              const newProfile: UserProfile = {
-                uid: user.uid,
-                email: user.email,
-                displayName: user.displayName,
-                role: "caregiver",
-              };
-              await setDoc(userRef, newProfile);
-              setUserProfile(newProfile);
-            }
-          } else {
-            setUserProfile(null);
+      
+      const setupAuth = async () => {
+        if (demoProfile && !auth.currentUser) {
+          try {
+            await signInAnonymously(auth);
+          } catch(e) {
+            console.warn("Anonymous signin on mount failed", e);
           }
-        } catch (err) {
-          console.error("Auth sync error", err);
         }
 
-        setLoading(false);
-      });
+        unsubscribe = onAuthStateChanged(auth, async (user) => {
+          try {
+            setCurrentUser(user);
+
+            if (user) {
+              // Fetch or create user profile
+              const userRef = doc(db, "users", user.uid);
+              const docSnap = await getDoc(userRef);
+
+              if (docSnap.exists()) {
+                setUserProfile(docSnap.data() as UserProfile);
+              } else {
+                const newProfile: UserProfile = {
+                  uid: user.uid,
+                  email: user.email,
+                  displayName: user.displayName,
+                  role: "caregiver",
+                };
+                await setDoc(userRef, newProfile);
+                setUserProfile(newProfile);
+              }
+            } else {
+              setUserProfile(null);
+            }
+          } catch (err) {
+            console.error("Auth sync error", err);
+          }
+
+          setLoading(false);
+        });
+      };
+      setupAuth();
     } catch (err) {
       console.error("Auth effect error", err);
       setLoading(false);
@@ -102,7 +115,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  const loginAsDemo = (role: UserRole) => {
+  const loginAsDemo = async (role: UserRole) => {
+    try { await signInAnonymously(auth); } catch(e) { console.warn("Anonymous signin failed", e); }
     const nameMap = {
       caregiver: "Sarah Jenkins",
       rn: "Emily Chen",

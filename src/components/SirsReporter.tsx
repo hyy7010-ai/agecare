@@ -29,9 +29,10 @@ interface SirsReporterProps {
   onSubmit: (data: SIRSAlertData) => void;
   initialDescription?: string;
   initialSirsResult?: SIRSReport | null;
+  residentName?: string;
 }
 
-export function SirsReporter({ onCancel, onSubmit, initialDescription = "", initialSirsResult = null }: SirsReporterProps) {
+export function SirsReporter({ onCancel, onSubmit, initialDescription = "", initialSirsResult = null, residentName = "Unknown" }: SirsReporterProps) {
   const { currentUser } = useAuth();
   const { isOnline } = useLanguage();
   const [description, setDescription] = useState(initialDescription);
@@ -140,7 +141,7 @@ ${sirsResult.autofillReport.regulatorNotification}
     if (!description.trim() && !audioBase64 && !imageBase64) return;
 
     if (!isOnline) {
-      const scrubbedDescription = description ? scrubPII(description, "Unknown") : "";
+      const scrubbedDescription = description ? scrubPII(description, residentName) : "";
       await addToOfflineQueue('sirsReport', { description: scrubbedDescription, audioBase64, imageBase64 });
       setIsSubmitted(true);
       return;
@@ -161,7 +162,7 @@ ${sirsResult.autofillReport.regulatorNotification}
       await new Promise(r => setTimeout(r, 600));
       setScrubbingStatus('Redacting identifiers locally...');
       
-      const scrubbedDescription = description ? scrubPII(description, "Unknown") : "";
+      const scrubbedDescription = description ? scrubPII(description, residentName) : "";
 
       await new Promise(r => setTimeout(r, 600));
       setScrubbingStatus('Encrypting sanitized payload for AI Analysis...');

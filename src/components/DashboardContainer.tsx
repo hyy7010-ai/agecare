@@ -715,7 +715,7 @@ export const DashboardContainer: React.FC = () => {
               }
               isCaregiver={isCaregiver}
               onLogSirs={(description, sirsResult) => {
-                setSirsInitialData({ description, sirsResult });
+                setSirsInitialData({ description, sirsResult, residentName: residents.find(r => r.id === selectedResidentId)?.name });
                 setCurrentScreen("sirs");
               }}
             />
@@ -730,6 +730,7 @@ export const DashboardContainer: React.FC = () => {
             onSubmit={handleSirsReport}
             initialDescription={sirsInitialData.description}
             initialSirsResult={sirsInitialData.sirsResult}
+            residentName={sirsInitialData.residentName || "Unknown"}
           />
         )}
 

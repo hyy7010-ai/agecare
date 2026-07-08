@@ -46,7 +46,7 @@ export const Login: React.FC = () => {
         if ("Notification" in window && Notification.permission !== "denied" && Notification.permission !== "granted") {
           Notification.requestPermission();
         }
-        loginAsDemo(testAccounts[email]);
+        await loginAsDemo(testAccounts[email]);
         navigate("/");
         return;
       } catch (err: any) {
