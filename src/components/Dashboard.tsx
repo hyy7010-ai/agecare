@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ShieldAlert, Search, Filter, Clock, CheckCircle } from "lucide-react";
+import { ShieldAlert, Search, Filter, Clock, CheckCircle, X, Edit2 } from "lucide-react";
 import { Resident, PendingReview } from "../types";
 import { useLanguage } from "../contexts/LanguageContext";
 
@@ -10,6 +10,9 @@ interface DashboardProps {
   canLogSirs: boolean;
   isCaregiver?: boolean;
   pendingReviews?: PendingReview[];
+  onToggleCareTask?: (id: string, task: "bath" | "meal" | "toilet", currentValue: boolean) => void;
+  onUpdateCareMinutes?: (id: string, minutes: number) => void;
+  onReviewClick?: (review: PendingReview) => void;
 }
 
 export function Dashboard({
@@ -18,9 +21,13 @@ export function Dashboard({
   onNewReport,
   canLogSirs,
   isCaregiver,
-  pendingReviews = []
+  pendingReviews = [],
+  onToggleCareTask,
+  onUpdateCareMinutes,
+  onReviewClick
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedReview, setSelectedReview] = useState<PendingReview | null>(null);
   const { t } = useLanguage();
 
   const filteredResidents = residents.filter(r => 
@@ -123,6 +130,12 @@ export function Dashboard({
                         : "red"
                   }
                   label={t(resident.bathStatus as any) || resident.bathStatus}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onToggleCareTask) {
+                      onToggleCareTask(resident.id, "bath", resident.bathStatus === "done");
+                    }
+                  }}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -138,6 +151,12 @@ export function Dashboard({
                         : "red"
                   }
                   label={t(resident.mealStatus as any) || resident.mealStatus}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onToggleCareTask) {
+                      onToggleCareTask(resident.id, "meal", resident.mealStatus === "eaten");
+                    }
+                  }}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -153,30 +172,21 @@ export function Dashboard({
                         : "red"
                   }
                   label={t(resident.toiletStatus as any) || resident.toiletStatus}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onToggleCareTask) {
+                      onToggleCareTask(resident.id, "toilet", resident.toiletStatus === "independent");
+                    }
+                  }}
                 />
               </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t border-slate-100/60">
-              <div className="flex justify-between items-end mb-3">
-                <span className="text-sm text-slate-500 font-semibold tracking-wider uppercase">{t('care_minutes')}</span>
-                <span className="font-bold text-slate-800 text-xl font-heading">
-                  {resident.careMinutesToday} <span className="text-base text-slate-400 font-medium">/ {resident.careMinutesTarget}m</span>
-                </span>
-              </div>
-              <div className="h-3 w-full bg-slate-100/80 rounded-full overflow-hidden shadow-inner relative">
-                <div
-                  className={`absolute left-0 top-0 h-full rounded-full transition-all duration-1000 ${
-                    resident.careMinutesToday / resident.careMinutesTarget >= 1
-                      ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
-                      : "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.4)]"
-                  }`}
-                  style={{
-                    width: `${Math.min((resident.careMinutesToday / resident.careMinutesTarget) * 100, 100)}%`,
-                  }}
-                ></div>
-              </div>
-            </div>
+            <CareMinutesSlider 
+              resident={resident} 
+              onUpdate={onUpdateCareMinutes}
+              label={t('care_minutes')}
+            />
           </button>
         ))}
       </div>
@@ -195,7 +205,11 @@ export function Dashboard({
             ) : (
               <ul className="divide-y divide-slate-100">
                 {pendingReviews.map((review) => (
-                  <li key={review.id} className="p-6 hover:bg-slate-50 transition-colors flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                  <li 
+                    key={review.id} 
+                    className="p-6 hover:bg-slate-50 transition-colors flex flex-col md:flex-row gap-4 justify-between items-start md:items-center cursor-pointer hover:shadow-sm"
+                    onClick={() => setSelectedReview(review)}
+                  >
                     <div>
                       <h4 className="font-medium text-slate-800">{review.residentName}</h4>
                       <p className="text-sm text-slate-500 mt-1 line-clamp-1">{review.aiResult?.observation || "Image submission"}</p>
@@ -216,11 +230,192 @@ export function Dashboard({
           </div>
         </div>
       )}
+      
+      {selectedReview && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-xl animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50">
+              <h3 className="font-semibold text-slate-800">Observation Details</h3>
+              <button 
+                onClick={() => setSelectedReview(null)}
+                className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className="font-medium text-slate-800">{selectedReview.residentName}</h4>
+                  <p className="text-sm text-slate-500">
+                    {new Date(selectedReview.timestamp).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-medium">
+                  <Clock className="w-3.5 h-3.5" />
+                  {t('waiting_rn_review')}
+                </div>
+              </div>
+              
+              {selectedReview.photoUrl && (
+                <div className="mb-6 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center h-48 relative">
+                  <img src={selectedReview.photoUrl} alt="Observation" className="absolute inset-0 w-full h-full object-cover" />
+                </div>
+              )}
+              
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                <h5 className="text-xs font-bold uppercase tracking-wider text-indigo-800 mb-2">AI Analysis</h5>
+                <p className="text-sm text-indigo-900 leading-relaxed">
+                  {selectedReview.aiResult?.observation || "No analysis available."}
+                </p>
+                
+                {selectedReview.aiResult?.observationType && (
+                  <div className="mt-4 pt-4 border-t border-indigo-200/50 grid grid-cols-2 gap-4">
+                    <div>
+                      <span className="block text-xs font-medium text-indigo-500 mb-1">Type</span>
+                      <span className="text-sm font-medium text-indigo-900 capitalize">{selectedReview.aiResult.observationType.replace('_', ' ')}</span>
+                    </div>
+                    {selectedReview.aiResult.bodyLocation && (
+                      <div>
+                        <span className="block text-xs font-medium text-indigo-500 mb-1">Location</span>
+                        <span className="text-sm font-medium text-indigo-900 capitalize">{selectedReview.aiResult.bodyLocation.replace('_', ' ')}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setSelectedReview(null)}
+                className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors font-medium text-sm shadow-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatusBadge({ status, label }: { status: "green" | "yellow" | "red", label: string }) {
+function CareMinutesSlider({ 
+  resident, 
+  onUpdate,
+  label
+}: { 
+  resident: Resident; 
+  onUpdate?: (id: string, mins: number) => void;
+  label: string;
+}) {
+  const [localValue, setLocalValue] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const displayValue = localValue !== null ? localValue : resident.careMinutesToday;
+  const maxMins = Math.max(resident.careMinutesTarget, 200);
+
+  const handleEditSubmit = () => {
+    const val = parseInt(inputValue, 10);
+    if (!isNaN(val) && onUpdate) {
+      onUpdate(resident.id, val);
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="mt-8 pt-6 border-t border-slate-100/60" onClick={e => e.stopPropagation()}>
+      <div className="flex justify-between items-end mb-3">
+        <span className="text-sm text-slate-500 font-semibold tracking-wider uppercase">{label}</span>
+        <div className="flex items-center gap-2">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <input 
+                type="number"
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onBlur={handleEditSubmit}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleEditSubmit();
+                  if (e.key === 'Escape') setIsEditing(false);
+                }}
+                autoFocus
+                onClick={e => e.stopPropagation()}
+                className="w-16 px-2 py-1 text-sm border border-indigo-200 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold text-slate-800"
+              />
+              <span className="text-base text-slate-400 font-medium">/ {resident.careMinutesTarget}m</span>
+            </div>
+          ) : (
+            <div 
+              className="group/edit flex items-center gap-1.5 cursor-pointer hover:bg-slate-50 px-2 py-1 -mr-2 rounded-lg transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInputValue(displayValue.toString());
+                setIsEditing(true);
+              }}
+            >
+              <span className="font-bold text-slate-800 text-xl font-heading">
+                {displayValue} <span className="text-base text-slate-400 font-medium">/ {resident.careMinutesTarget}m</span>
+              </span>
+              <Edit2 className="w-4 h-4 text-slate-300 group-hover/edit:text-indigo-500 transition-colors" />
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="relative h-6 w-full group flex items-center">
+        <div className="absolute left-0 right-0 h-3 my-auto bg-slate-100/80 rounded-full overflow-hidden shadow-inner pointer-events-none">
+          <div
+            className={`absolute left-0 top-0 h-full rounded-full transition-all duration-150 ${
+              displayValue / resident.careMinutesTarget >= 1
+                ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                : "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.4)]"
+            }`}
+            style={{
+              width: `${Math.min((displayValue / maxMins) * 100, 100)}%`,
+            }}
+          ></div>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max={maxMins}
+          value={displayValue}
+          onChange={(e) => {
+            e.stopPropagation();
+            setLocalValue(parseInt(e.target.value, 10));
+          }}
+          onMouseUp={(e) => {
+            e.stopPropagation();
+            if (onUpdate && localValue !== null) {
+              onUpdate(resident.id, localValue);
+            }
+            setLocalValue(null);
+          }}
+          onTouchEnd={(e) => {
+            e.stopPropagation();
+            if (onUpdate && localValue !== null) {
+              onUpdate(resident.id, localValue);
+            }
+            setLocalValue(null);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-0 w-full h-full appearance-none bg-transparent cursor-pointer
+            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 
+            [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-indigo-500 
+            [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform
+            [&::-webkit-slider-thumb]:hover:scale-125
+            [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:bg-white 
+            [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-indigo-500 [&::-moz-range-thumb]:rounded-full 
+            [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:transition-transform [&::-moz-range-thumb]:hover:scale-125"
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status, label, onClick }: { status: "green" | "yellow" | "red", label: string, onClick?: (e: React.MouseEvent) => void }) {
   const colorClasses = 
     status === "green"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -229,7 +424,10 @@ function StatusBadge({ status, label }: { status: "green" | "yellow" | "red", la
         : "bg-red-50 text-red-700 border-red-200";
 
   return (
-    <div className={`px-2.5 py-1 rounded-md border text-xs font-semibold uppercase tracking-wider text-center w-full shadow-sm ${colorClasses}`}>
+    <div 
+      onClick={onClick}
+      className={`px-2.5 py-1 rounded-md border text-xs font-semibold uppercase tracking-wider text-center w-full shadow-sm ${onClick ? 'cursor-pointer hover:brightness-95 transition-all active:scale-95' : ''} ${colorClasses}`}
+    >
       {label}
     </div>
   );

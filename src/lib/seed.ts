@@ -23,6 +23,6 @@ export async function seedDatabaseIfNeeded() {
       }
     }
   } catch (err) {
-    console.error("Failed to seed database:", err);
+    console.warn("Failed to seed database:", err);
   }
 }

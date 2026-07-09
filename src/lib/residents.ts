@@ -109,6 +109,28 @@ export async function deleteResident(id: string): Promise<void> {
   }
 }
 
+export async function updateBasicCareTask(id: string, task: "bath" | "meal" | "toilet", value: boolean) {
+  try {
+    await updateDoc(doc(db, COLLECTION_NAME, id), {
+      [`basicCareTasks.${task}`]: value
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${id}`);
+    throw error;
+  }
+}
+
+export async function updateCareMinutes(id: string, minutes: number) {
+  try {
+    await updateDoc(doc(db, COLLECTION_NAME, id), {
+      careMinutesToday: minutes
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${id}`);
+    throw error;
+  }
+}
+
 export function subscribeResidents(callback: (residents: FirestoreResident[]) => void, onError?: (err: Error) => void) {
   return onSnapshot(
     collection(db, COLLECTION_NAME),
@@ -153,7 +175,7 @@ export async function seedResidentsIfEmpty(onError?: (e: Error) => void) {
       }
     }
   } catch (error) {
-    console.error("Error seeding residents:", error);
+    console.warn("Error seeding residents:", error);
     if (onError) onError(error as Error);
   } finally {
     isSeeding = false;

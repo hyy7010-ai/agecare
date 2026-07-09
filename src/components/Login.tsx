@@ -24,6 +24,7 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeRole, setActiveRole] = useState<UserRole | null>(null);
   const navigate = useNavigate();
   const { loginAsDemo } = useAuth();
   const { lang, setLang, t } = useLanguage();
@@ -39,7 +40,7 @@ export const Login: React.FC = () => {
       "admin@sunrisecare.com": "admin",
     };
 
-    if (testAccounts[email] && password === "password123") {
+    if (testAccounts[email] && (password === "password123" || password === "••••••••••••")) {
       try {
         setError("");
         setLoading(true);
@@ -95,8 +96,9 @@ export const Login: React.FC = () => {
       admin: "admin@sunrisecare.com"
     };
     setEmail(emails[role]);
-    setPassword("password123");
+    setPassword("••••••••••••");
     setError("");
+    setActiveRole(role);
   };
 
   return (
@@ -179,50 +181,70 @@ export const Login: React.FC = () => {
               <button
                 onClick={() => handlePreFill("caregiver")}
                 type="button"
-                className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all group"
+                className={`flex flex-col items-center justify-center p-3 border rounded-xl transition-all group ${
+                  activeRole === "caregiver" 
+                    ? "bg-indigo-50 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]" 
+                    : "bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50"
+                }`}
               >
-                <UserCircle className="w-6 h-6 text-slate-400 group-hover:text-indigo-600 mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-900">
+                <UserCircle className={`w-6 h-6 mb-2 transition-colors ${activeRole === "caregiver" ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-600"}`} />
+                <span className={`text-sm font-medium ${activeRole === "caregiver" ? "text-indigo-900" : "text-slate-700 group-hover:text-indigo-900"}`}>
                   Caregiver
                 </span>
               </button>
               <button
                 onClick={() => handlePreFill("rn")}
                 type="button"
-                className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-teal-300 hover:bg-teal-50 transition-all group"
+                className={`flex flex-col items-center justify-center p-3 border rounded-xl transition-all group ${
+                  activeRole === "rn" 
+                    ? "bg-teal-50 border-teal-500 shadow-[0_0_15px_rgba(20,184,166,0.2)]" 
+                    : "bg-white border-slate-200 hover:border-teal-300 hover:bg-teal-50"
+                }`}
               >
-                <HeartPulse className="w-6 h-6 text-slate-400 group-hover:text-teal-600 mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-700 group-hover:text-teal-900">
+                <HeartPulse className={`w-6 h-6 mb-2 transition-colors ${activeRole === "rn" ? "text-teal-600" : "text-slate-400 group-hover:text-teal-600"}`} />
+                <span className={`text-sm font-medium ${activeRole === "rn" ? "text-teal-900" : "text-slate-700 group-hover:text-teal-900"}`}>
                   RN
                 </span>
               </button>
               <button
                 onClick={() => handlePreFill("manager")}
                 type="button"
-                className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-all group"
+                className={`flex flex-col items-center justify-center p-3 border rounded-xl transition-all group ${
+                  activeRole === "manager" 
+                    ? "bg-amber-50 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]" 
+                    : "bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50"
+                }`}
               >
-                <Users className="w-6 h-6 text-slate-400 group-hover:text-amber-600 mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-700 group-hover:text-amber-900">
+                <Users className={`w-6 h-6 mb-2 transition-colors ${activeRole === "manager" ? "text-amber-600" : "text-slate-400 group-hover:text-amber-600"}`} />
+                <span className={`text-sm font-medium ${activeRole === "manager" ? "text-amber-900" : "text-slate-700 group-hover:text-amber-900"}`}>
                   Manager
                 </span>
               </button>
               <button
                 onClick={() => handlePreFill("family")}
                 type="button"
-                className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-pink-300 hover:bg-pink-50 transition-all group"
+                className={`flex flex-col items-center justify-center p-3 border rounded-xl transition-all group ${
+                  activeRole === "family" 
+                    ? "bg-pink-50 border-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.2)]" 
+                    : "bg-white border-slate-200 hover:border-pink-300 hover:bg-pink-50"
+                }`}
               >
-                <HeartPulse className="w-6 h-6 text-slate-400 group-hover:text-pink-600 mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-700 group-hover:text-pink-900">
+                <HeartPulse className={`w-6 h-6 mb-2 transition-colors ${activeRole === "family" ? "text-pink-600" : "text-slate-400 group-hover:text-pink-600"}`} />
+                <span className={`text-sm font-medium ${activeRole === "family" ? "text-pink-900" : "text-slate-700 group-hover:text-pink-900"}`}>
                   Family
                 </span>
               </button>
               <button
                 onClick={() => handlePreFill("admin")}
                 type="button"
-                className="flex flex-col items-center justify-center p-3 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-900 transition-all group col-span-2"
+                className={`flex flex-col items-center justify-center p-3 border rounded-xl transition-all group col-span-2 ${
+                  activeRole === "admin" 
+                    ? "bg-slate-900 border-slate-600 shadow-[0_0_15px_rgba(15,23,42,0.4)]" 
+                    : "bg-slate-800 border-slate-700 hover:bg-slate-900"
+                }`}
               >
-                <ShieldAlert className="w-6 h-6 text-slate-400 group-hover:text-white mb-2 transition-colors" />
-                <span className="text-sm font-medium text-slate-300 group-hover:text-white">
+                <ShieldAlert className={`w-6 h-6 mb-2 transition-colors ${activeRole === "admin" ? "text-white" : "text-slate-400 group-hover:text-white"}`} />
+                <span className={`text-sm font-medium ${activeRole === "admin" ? "text-white" : "text-slate-300 group-hover:text-white"}`}>
                   Admin
                 </span>
               </button>

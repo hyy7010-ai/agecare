@@ -24,6 +24,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLanguage } from "../contexts/LanguageContext";
 import { addToOfflineQueue } from "../lib/offlineQueue";
 import { scrubPII } from "../lib/piiScrubber";
+import { CountdownTimer } from "./CountdownTimer";
 
 interface SirsReporterProps {
   onCancel: () => void;
@@ -35,7 +36,7 @@ interface SirsReporterProps {
 
 export function SirsReporter({ onCancel, onSubmit, initialDescription = "", initialSirsResult = null, residentName = "Unknown" }: SirsReporterProps) {
   const { currentUser } = useAuth();
-  const { isOnline } = useLanguage();
+  const { isOnline, language } = useLanguage();
   const [description, setDescription] = useState(initialDescription);
   const [isProcessing, setIsProcessing] = useState(false);
   const [scrubbingStatus, setScrubbingStatus] = useState<string | null>(null);
@@ -90,7 +91,37 @@ export function SirsReporter({ onCancel, onSubmit, initialDescription = "", init
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => setImageBase64(reader.result as string);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+          setImageBase64(dataUrl);
+        };
+        img.src = e.target?.result as string;
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -171,7 +202,7 @@ ${sirsResult.autofillReport.regulatorNotification}
       const res = await fetch("/api/sirs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: scrubbedDescription, audioBase64, imageBase64 }),
+        body: JSON.stringify({ description: scrubbedDescription, audioBase64, imageBase64, language }),
       });
       
       setScrubbingStatus(null);
@@ -180,7 +211,7 @@ ${sirsResult.autofillReport.regulatorNotification}
       if (text.trim().startsWith("<")) {
         console.error("Raw HTML response:", text);
         throw new Error(
-          "Action blocked by browser cookie settings. Please OPEN IN NEW TAB (using the arrow icon at the top right of the preview) to authenticate and continue.",
+          `请求被拦截 (HTTP ${res.status}): ${text.substring(0, 150)}... 请在【新标签页】中打开应用再试。(Please OPEN IN NEW TAB)`
         );
       }
 
@@ -283,7 +314,7 @@ ${sirsResult.autofillReport.regulatorNotification}
                 <div className="relative z-10">
                   <Loader2 className="w-12 h-12 text-indigo-400 animate-spin mb-4 mx-auto" />
                   <h3 className="text-xl font-bold text-slate-100">
-                    Gemini is analyzing... (results usually appear within 10 seconds)
+                    <CountdownTimer />
                   </h3>
                   <p className="text-slate-400 mt-2">
                     Gemini is checking compliance criteria and drafting a report.

@@ -4,6 +4,8 @@ import {
   onAuthStateChanged,
   signOut,
   signInAnonymously,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
@@ -65,11 +67,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       
       const setupAuth = async () => {
+        let isSigningIn = false;
         if (demoProfile && !auth.currentUser) {
+          isSigningIn = true;
+          const email = demoProfile.email || `${demoProfile.role}@sunrisecare.com`;
+          const password = "password123";
           try {
-            await signInAnonymously(auth);
-          } catch(e) {
-            console.warn("Anonymous signin on mount failed", e);
+            await signInWithEmailAndPassword(auth, email, password);
+          } catch (e) {
+            console.warn("Email signin on mount failed, trying anonymous:", e);
+            try {
+              await signInAnonymously(auth);
+            } catch (anonErr) {
+              console.warn("Anonymous signin on mount also failed", anonErr);
+              localStorage.removeItem("demoProfile");
+              setDemoProfile(null);
+              isSigningIn = false;
+            }
           }
         }
 
@@ -87,9 +101,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               } else {
                 const newProfile: UserProfile = {
                   uid: user.uid,
-                  email: user.email,
-                  displayName: user.displayName,
-                  role: "caregiver",
+                  email: demoProfile?.email || user.email || "guest@sunrisecare.com",
+                  displayName: demoProfile?.displayName || user.displayName || "Guest User",
+                  role: demoProfile?.role || "caregiver",
                 };
                 await setDoc(userRef, newProfile);
                 setUserProfile(newProfile);
@@ -101,7 +115,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             console.error("Auth sync error", err);
           }
 
-          setLoading(false);
+          if (!isSigningIn || user) {
+            setLoading(false);
+          }
         });
       };
       setupAuth();
@@ -116,15 +132,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const loginAsDemo = async (role: UserRole) => {
+    const email = `${role}@sunrisecare.com`;
+    const password = "password123";
     let user = auth.currentUser;
-    if (!user) {
+
+    if (!user || user.email !== email) {
       try {
-        const res = await signInAnonymously(auth);
+        const res = await signInWithEmailAndPassword(auth, email, password);
         user = res.user;
-      } catch (e) {
-        console.warn("Anonymous signin failed", e);
+      } catch (signInErr: any) {
+        if (
+          signInErr.code === "auth/user-not-found" ||
+          signInErr.code === "auth/invalid-credential" ||
+          signInErr.code === "auth/wrong-password"
+        ) {
+          try {
+            const res = await createUserWithEmailAndPassword(auth, email, password);
+            user = res.user;
+          } catch (signUpErr: any) {
+            console.warn("Real user creation failed, trying anonymous:", signUpErr);
+            try {
+              const res = await signInAnonymously(auth);
+              user = res.user;
+            } catch (anonErr) {
+              console.warn("Anonymous fallback also failed (this is expected if not enabled).");
+            }
+          }
+        } else {
+          try {
+            const res = await signInAnonymously(auth);
+            user = res.user;
+          } catch (anonErr) {
+            console.warn("Anonymous fallback failed (this is expected if not enabled).");
+          }
+        }
       }
     }
+
     const nameMap = {
       caregiver: "Sarah Jenkins",
       rn: "Emily Chen",
@@ -134,7 +178,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     };
     const profile: UserProfile = {
       uid: user ? user.uid : `local-${role}`,
-      email: `${role}@sunrisecare.com`,
+      email: email,
       displayName: nameMap[role as keyof typeof nameMap] || "Guest",
       role: role,
     };

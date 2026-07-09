@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Shift {
   id: string;
@@ -25,6 +26,7 @@ interface RosterComplianceGuardProps {
 }
 
 export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
+  const { t } = useLanguage();
   const [shifts, setShifts] = useState<Shift[]>([]);
 
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
             <ArrowLeft className="w-5 h-5 text-slate-600" />
           </button>
           <h1 className="text-2xl font-medium tracking-tight text-slate-800">
-            Roster Compliance Guard
+            {t("roster_compliance_guard")}
           </h1>
         </div>
         <div className="flex gap-3">
@@ -108,11 +110,11 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
           >
             {hasRnBreach || !isCareMinutesCompliant ? (
               <>
-                <Lock className="w-4 h-4" /> Save Roster
+                <Lock className="w-4 h-4" /> {t("save_roster")}
               </>
             ) : (
               <>
-                <ShieldCheck className="w-4 h-4" /> Save Roster
+                <ShieldCheck className="w-4 h-4" /> {t("save_roster")}
               </>
             )}
           </button>
@@ -125,21 +127,20 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
           <XOctagon className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
           <div>
             <h3 className="text-red-800 font-bold tracking-tight">
-              ⚠️ Aged Care Act breach: No Registered Nurse coverage
+              {t("roster_breach_alert")}
             </h3>
             <div className="text-red-700 text-sm mt-1 space-y-1">
               {breaches.map((b) => (
                 <p key={b.id}>
-                  Missing RN for{" "}
+                  {t("missing_rn_for")}{" "}
                   <strong>
                     {b.day} {b.shiftType}
                   </strong>{" "}
-                  shift ({b.time}).
+                  {t("shift_word")} ({b.time}).
                 </p>
               ))}
               <p className="mt-2 font-medium">
-                This facility is at risk of regulatory sanction. The roster
-                cannot be saved until coverage is secured.
+                {t("risk_sanction_msg")}
               </p>
             </div>
           </div>
@@ -150,14 +151,14 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
         {/* Care Minutes Widget */}
         <div className="lg:col-span-1 border border-slate-200 rounded-xl bg-white p-6 shadow-sm">
           <h2 className="text-base font-medium tracking-tight text-slate-800 mb-6 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-400" /> Care Minutes Target
+            <Clock className="w-4 h-4 text-slate-400" /> {t("care_minutes_target")}
           </h2>
 
           <div className="space-y-6">
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-slate-500">
-                  Average Total Care Minutes
+                  {t("average_total_care_minutes")}
                 </span>
                 <span
                   className={
@@ -166,7 +167,7 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
                       : "text-red-600 font-bold"
                   }
                 >
-                  {averageCareMinutes} / {targetCareMinutes} mins
+                  {averageCareMinutes} / {targetCareMinutes} {t("mins")}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -187,7 +188,7 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
 
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-500">Of which RN Minutes</span>
+                <span className="text-slate-500">{t("of_which_rn_minutes")}</span>
                 <span
                   className={
                     isRnMinutesCompliant
@@ -195,7 +196,7 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
                       : "text-red-600 font-bold"
                   }
                 >
-                  {averageRnMinutes} / {targetRnMinutes} mins
+                  {averageRnMinutes} / {targetRnMinutes} {t("mins")}
                 </span>
               </div>
               <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -218,19 +219,18 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
         {/* 24/7 RN Summary */}
         <div className="lg:col-span-2 border border-slate-200 rounded-xl bg-white p-6 shadow-sm">
           <h2 className="text-base font-medium tracking-tight text-slate-800 mb-6 flex items-center gap-2">
-            <Users className="w-4 h-4 text-slate-400" /> 24/7 RN Coverage Status
+            <Users className="w-4 h-4 text-slate-400" /> {t("rn_coverage_status")}
           </h2>
           <div className="flex items-center gap-8">
             <div className="flex-1">
               <div className="text-3xl font-light text-slate-800 tracking-tight">
                 {shifts.length - breaches.length}{" "}
                 <span className="text-base text-slate-500 font-normal">
-                  / {shifts.length} shifts covered
+                  / {shifts.length} {t("shifts_covered")}
                 </span>
               </div>
               <p className="text-sm text-slate-500 mt-2">
-                The Aged Care Act requires at least one Registered Nurse on-site
-                and on duty at all times.
+                {t("required_rn_onsite")}
               </p>
             </div>
             {hasRnBreach ? (
@@ -250,7 +250,7 @@ export function RosterComplianceGuard({ onBack }: RosterComplianceGuardProps) {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50">
           <h2 className="text-base font-medium tracking-tight text-slate-800">
-            Weekly Roster View
+            {t("weekly_roster_view")}
           </h2>
         </div>
         <div className="overflow-x-auto">

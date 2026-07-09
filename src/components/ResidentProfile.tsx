@@ -18,6 +18,7 @@ import { db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useLanguage } from "../contexts/LanguageContext";
 import { scrubPII } from "../lib/piiScrubber";
+import { CountdownTimer } from "./CountdownTimer";
 
 interface ResidentProfileProps {
   resident: Resident;
@@ -37,7 +38,7 @@ export function ResidentProfile({
   isCaregiver,
   onLogSirs,
 }: ResidentProfileProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<AIObservationResult | null>(null);
@@ -148,6 +149,7 @@ export function ResidentProfile({
     try {
       const formData = new FormData();
       formData.append("audioRecording", audioBlob, "recording.webm");
+      formData.append("language", language);
 
       const response = await fetch("/api/audio-note", {
         method: "POST",
@@ -155,11 +157,17 @@ export function ResidentProfile({
       });
 
       const text = await response.text();
+      if (text.trim().startsWith("<")) {
+        console.error("Raw HTML response:", text);
+        throw new Error(
+          `请求被拦截 (HTTP ${response.status}): ${text.substring(0, 150)}... 请在【新标签页】中打开应用再试。(Please OPEN IN NEW TAB)`
+        );
+      }
       let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        throw new Error("Action blocked by browser cookie settings. Please open this app in a new tab.");
+        throw new Error("Failed to parse JSON response");
       }
 
       if (!response.ok) {
@@ -223,13 +231,16 @@ export function ResidentProfile({
       });
 
       const text = await response.text();
+      if (text.trim().startsWith("<")) {
+        throw new Error(
+          "由于浏览器安全限制，AI 请求被拦截。请点击预览区右上角的 ↗️ 按钮，在【新标签页】中打开应用即可正常使用。\n(Action blocked by browser cookie settings. Please OPEN IN NEW TAB to authenticate and continue.)",
+        );
+      }
       let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        throw new Error(
-          "Server returned an error page or cookie check instead of JSON. Please temporarily disable AdBlock/Privacy blockers or try opening the app in a new tab.",
-        );
+        throw new Error("Failed to parse JSON response");
       }
 
       if (!response.ok)
@@ -289,11 +300,16 @@ export function ResidentProfile({
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to generate family update");
+      const text = await response.text();
+      if (text.trim().startsWith("<")) {
+        throw new Error("由于浏览器安全限制，AI 请求被拦截。请点击预览区右上角的 ↗️ 按钮，在【新标签页】中打开应用即可正常使用。");
       }
+      
+      const data = JSON.parse(text);
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate family update");
+      }
       
       // Restore the name dynamically in the client after generation (if we want to render it nicely for the RN)
       // Since the prompt asks it not to use names, this might just be a fallback
@@ -362,11 +378,17 @@ export function ResidentProfile({
         });
 
         const text = await response.text();
+        if (text.trim().startsWith("<")) {
+          console.error("Raw HTML response:", text);
+          throw new Error(
+            "由于浏览器安全限制，AI 请求被拦截。请点击预览区右上角的 ↗️ 按钮，在【新标签页】中打开应用即可正常使用。\n(Action blocked by browser cookie settings. Please OPEN IN NEW TAB to authenticate and continue.)",
+          );
+        }
         try {
           data = JSON.parse(text);
         } catch (e) {
           throw new Error(
-            "Action blocked by browser cookie settings. Please open this app in a new tab to authenticate and continue.",
+            "Failed to parse JSON response",
           );
         }
 
@@ -411,11 +433,16 @@ export function ResidentProfile({
       .substring(0, 2);
 
   const processFile = async (file: File) => {
-    // Show preview and compress image for Firestore (1MB limit)
+    setIsUploading(true);
+    setAiResult(null);
+    setIsConfirmed(false);
+    setErrorMsg(null);
+
+    // Compress image to prevent Nginx 413 Payload Too Large errors (1MB limit)
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
         const canvas = document.createElement("canvas");
         const MAX_WIDTH = 800;
         const MAX_HEIGHT = 800;
@@ -442,57 +469,55 @@ export function ResidentProfile({
         // Compress to JPEG with 0.7 quality
         const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
         setPhotoPreview(dataUrl);
+
+        try {
+          const res = await fetch(dataUrl);
+          const blob = await res.blob();
+          const formData = new FormData();
+          formData.append("observationImage", blob, "photo.jpg");
+          formData.append("language", language);
+
+          const response = await fetch("/api/vision", {
+            method: "POST",
+            body: formData,
+          });
+
+          const text = await response.text();
+          if (text.trim().startsWith("<")) {
+            console.error("Raw HTML response:", text);
+            throw new Error(
+              `请求被拦截 (HTTP ${response.status}): ${text.substring(0, 150)}... 请在【新标签页】中打开应用再试。(Please OPEN IN NEW TAB)`
+            );
+          }
+
+          let data;
+          try {
+            const cleanedText = text
+              .replace(/```json\n?/g, "")
+              .replace(/```\n?/g, "")
+              .trim();
+            data = JSON.parse(cleanedText);
+          } catch (e) {
+            throw new Error(
+              `Failed to parse response (Status ${response.status}): ${text.substring(0, 300)}`,
+            );
+          }
+
+          if (!response.ok) {
+            throw new Error(data?.error || `Server error ${response.status}`);
+          }
+
+          setAiResult(data.result);
+        } catch (err: any) {
+          console.error(err);
+          setErrorMsg(err.message || "Failed to analyze image. Please try again.");
+        } finally {
+          setIsUploading(false);
+        }
       };
       img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
-
-    setIsUploading(true);
-    setAiResult(null);
-    setIsConfirmed(false);
-    setErrorMsg(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("observationImage", file);
-
-      const response = await fetch("/api/vision", {
-        method: "POST",
-        body: formData,
-      });
-
-      const text = await response.text();
-      if (text.trim().startsWith("<")) {
-        console.error("Raw HTML response:", text);
-        throw new Error(
-          "Action blocked by browser cookie settings. Please OPEN IN NEW TAB (using the arrow icon at the top right of the preview) to authenticate and continue.",
-        );
-      }
-
-      let data;
-      try {
-        const cleanedText = text
-          .replace(/```json\n?/g, "")
-          .replace(/```\n?/g, "")
-          .trim();
-        data = JSON.parse(cleanedText);
-      } catch (e) {
-        throw new Error(
-          `Failed to parse response (Status ${response.status}): ${text.substring(0, 300)}`,
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(data?.error || `Server error ${response.status}`);
-      }
-
-      setAiResult(data.result);
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || "Failed to analyze image. Please try again.");
-    } finally {
-      setIsUploading(false);
-    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -902,7 +927,7 @@ export function ResidentProfile({
             <div className="h-full border border-slate-200 rounded-2xl bg-white p-10 flex flex-col items-center justify-center text-center">
               <Loader2 className="w-10 h-10 text-teal-500 animate-spin mb-4 font-light" />
               <h3 className="text-lg font-normal text-slate-700">
-                {t('gemini_analyzing')}
+                <CountdownTimer text={t('gemini_analyzing')} fallbackText={t('gemini_analyzing').replace('{s}', '...')} />
               </h3>
               <p className="text-slate-500 text-sm mt-2 font-light">
                 {t('processing_observation_securely')}
@@ -1121,7 +1146,7 @@ export function ResidentProfile({
             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">{t('or_type_manually')}</div>
             <textarea
               className="w-full min-h-[100px] p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium mb-4"
-              placeholder="E.g. Resident had a fall in the bathroom and hit their head..."
+              placeholder={t('placeholder_care_note_example')}
               value={careNoteInput}
               onChange={(e) => setCareNoteInput(e.target.value)}
             />
@@ -1243,6 +1268,8 @@ export function ResidentProfile({
                         <button
                           onClick={() => {
                             const utterance = new SpeechSynthesisUtterance(nativeConfirmation);
+                            utterance.lang = language === "zh" ? "zh-CN" : language === "tl" ? "tl-PH" : "en-US";
+                            window.speechSynthesis.cancel();
                             window.speechSynthesis.speak(utterance);
                           }}
                           className="flex items-center gap-1.5 bg-white border border-indigo-200 text-indigo-600 px-3 py-1.5 rounded-md hover:bg-indigo-50 transition-colors shadow-sm"

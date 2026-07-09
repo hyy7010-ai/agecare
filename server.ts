@@ -7,6 +7,20 @@ import multer from 'multer';
 // Set up Multer for handling file uploads (in memory)
 const upload = multer({ storage: multer.memoryStorage() });
 
+function sanitizeErrorMessage(message: string): string {
+  const lowercase = String(message || '').toLowerCase();
+  if (
+    lowercase.includes('gemini_api_key') || 
+    lowercase.includes('api_key') || 
+    lowercase.includes('key is missing') ||
+    lowercase.includes('invalid api key') ||
+    lowercase.includes('api key not found')
+  ) {
+    return 'AI 暂时不可用，请稍后重试 (AI service is temporarily unavailable. Please try again later.)';
+  }
+  return message;
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -27,35 +41,40 @@ async function startServer() {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   async function generateWithRetry(request: any): Promise<any> {
-  const aiClient = getAi();
-  const maxRetries = 3;
-  const TIMEOUT_MS = 40000;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await Promise.race([
-        aiClient.models.generateContent(request),
-        delay(TIMEOUT_MS).then(() => {
-          throw new Error('TIMEOUT_RETRYABLE');
-        }),
-      ]);
-    } catch (e: any) {
-      const msg = String(e.message || '');
-      const isQuota =
-        msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
-      const isOverloaded =
-        msg.includes('503') || msg.includes('UNAVAILABLE') ||
-        msg.includes('high demand') || msg.includes('overloaded') ||
-        msg.includes('TIMEOUT_RETRYABLE');
-      if (!isQuota && !isOverloaded) throw e;
-      if (i === maxRetries - 1) {
-        throw new Error('The AI service is temporarily busy. Please try again in a few seconds.');
+    const aiClient = getAi();
+    const maxRetries = 5;
+    const TIMEOUT_MS = 30000;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      let timeoutId: any;
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('TIMEOUT_RETRYABLE')), TIMEOUT_MS);
+        });
+        
+        return await Promise.race([
+          aiClient.models.generateContent(request),
+          timeoutPromise
+        ]);
+      } catch (e: any) {
+        const msg = String(e.message || '');
+        const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
+        const isOverloaded = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('TIMEOUT_RETRYABLE') || msg.includes('fetch failed') || msg.includes('high demand') || msg.includes('overloaded');
+        
+        if (!isQuota && !isOverloaded) throw e;
+        
+        if (i === maxRetries - 1) {
+          throw new Error(`The AI service is temporarily busy. Last error: ${msg}. Please try again in a few seconds.`);
+        }
+        
+        const waitTime = Math.min(2000 * Math.pow(2, i), 8000);
+        console.log(`AI busy, retrying in ${waitTime}ms (attempt ${i + 1}/${maxRetries})`);
+        await delay(waitTime);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
       }
-      const waitTime = Math.min(2000 * Math.pow(2, i), 8000);
-      console.log(`AI busy, retrying in ${waitTime}ms (attempt ${i + 1}/${maxRetries})`);
-      await delay(waitTime);
     }
   }
-}
 
   // API Route: AI Observation (Wound/Excrement)
   app.post('/api/vision', upload.single('observationImage'), async (req, res) => {
@@ -63,6 +82,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       if (!req.file) {
         return res.status(400).json({ error: 'No image uploaded' });
       }
+      const language = req.body.language || "en";
 
       // Convert buffer to base64 for Gemini
       const fileData = {
@@ -71,6 +91,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
           mimeType: req.file.mimetype,
         },
       };
+
+
 
       const prompt = `
         You are an AI assistant in an aged care facility. 
@@ -139,7 +161,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: parsedResult });
     } catch (error: any) {
       console.error('Vision API Error:', error);
-      let errorMsg = error.message || 'Failed to process AI observation';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to process AI observation');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -152,7 +174,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No audio file uploaded' });
+      const language = req.body.language || "en";
       }
+
+
 
       const prompt = `
         You are a professional Registered Nurse and Compliance Officer in an Australian aged care facility.
@@ -183,6 +208,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         - An accidental fall that results in injury, including falls that occur while staff are actively assisting the resident, MUST be categorised as "Fall resulting in injury".
         - Only use "Neglect" when the carer's description explicitly indicates care was withheld or the resident was left unattended when supervision was required.
         
+        CRITICAL LANGUAGE INSTRUCTION: The values for englishNote, suggestedFollowUps, and autofillReport fields MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
+        CRITICAL LANGUAGE INSTRUCTION: The values for incidentTitle, riskFlag, description, and suggestedActions MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
         Return your response in structured JSON format with these exact keys:
         - englishNote: string (the professional progress note in English)
         - nativeConfirmation: string (the translated confirmation in the carer's native language)
@@ -265,7 +292,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: parsedResult });
     } catch (error: any) {
       console.error('Audio API Error:', error);
-      let errorMsg = error.message || 'Failed to process audio';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to process audio');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -276,7 +303,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: SIRS Incident Reporter
   app.post('/api/sirs', async (req, res) => {
     try {
-      const { description, audioBase64, imageBase64 } = req.body;
+      const { description, audioBase64, imageBase64, language = "en" } = req.body;
       if (!description && !audioBase64 && !imageBase64) {
         return res.status(400).json({ error: 'Incident description, audio, or image is required' });
       }
@@ -424,7 +451,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: parsedResult });
     } catch (error: any) {
       console.error('SIRS API Error:', error);
-      let errorMsg = error.message || 'Failed to process SIRS report';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to process SIRS report');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -435,11 +462,13 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: Care Note Generator
   app.post('/api/care-note', express.json(), async (req, res) => {
     try {
-      const { input } = req.body;
+      const { input, language = "en" } = req.body;
       if (!input) {
          return res.status(400).json({ error: 'Input required.' });
       }
       
+
+
       const prompt = `
         You are an expert aged care documentation assistant in Australia.
         Transform the following casual carer note into a professional English Progress Note suitable for Australian aged care documentation, aligned with the Strengthened Aged Care Quality Standards.
@@ -454,6 +483,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
         Casual Input: "${input}"
         
+        CRITICAL LANGUAGE INSTRUCTION: The values for englishNote, suggestedFollowUps, and autofillReport fields MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
+        CRITICAL LANGUAGE INSTRUCTION: The values for incidentTitle, riskFlag, description, and suggestedActions MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
         Return your response in structured JSON format with these exact keys:
         - englishNote: string (the professional progress note in English, plain text without markdown)
         - nativeConfirmation: string (the translated confirmation in the carer's native language, or empty if English)
@@ -488,7 +519,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: parsedResult });
     } catch (error: any) {
       console.error('Care Note API Error:', error);
-      let errorMsg = error.message || 'Failed to generate care note.';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to generate care note.');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -499,10 +530,12 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: Generate Daily Summary
   app.post('/api/summary', async (req, res) => {
     try {
-      const { inputs } = req.body;
+      const { inputs, language = "en" } = req.body;
       if (!inputs) {
         return res.status(400).json({ error: 'Data required.' });
       }
+
+
 
       const prompt = `
         You are an AI generating a concise professional aged care daily wellness summary.
@@ -532,7 +565,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: text });
     } catch (error: any) {
       console.error('Summary API Error:', error);
-      let errorMsg = error.message || 'Failed to generate summary.';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to generate summary.');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -543,8 +576,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: Generate Shift Handover
   app.post('/api/shift-handover', express.json(), async (req, res) => {
     try {
-      const { residents, sirsEvents, rnReviews } = req.body;
+      const { residents, sirsEvents, rnReviews, language = "en" } = req.body;
       
+
+
       const prompt = `
         You are a professional Registered Nurse manager creating a shift handover report.
         Based on the following data for today, generate a direct, concise 3-part handover summary.
@@ -576,7 +611,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: response.text || '' });
     } catch (error: any) {
       console.error('Handover API Error:', error);
-      let errorMsg = error.message || 'Failed to generate handover.';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to generate handover.');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -586,11 +621,13 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   app.post('/api/generate-family-update', async (req, res) => {
     try {
-      const { resident, careNotes } = req.body;
+      const { resident, careNotes, language = "en" } = req.body;
       
       if (!resident || !resident.name) {
         return res.status(400).json({ error: 'Resident data is required.' });
       }
+
+
 
       const prompt = `
         You are a compassionate aged care communication assistant.
@@ -621,7 +658,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
       res.json({ result: response.text || '' });
     } catch (error: any) {
       console.error('Family Update API Error:', error);
-      let errorMsg = error.message || 'Failed to generate family update.';
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to generate family update.');
       if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
       }
@@ -653,7 +690,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('Server Error:', err);
     if (req.path.startsWith('/api')) {
-      res.status(500).json({ error: err.message || 'Internal Server Error' });
+      res.status(500).json({ error: sanitizeErrorMessage(err.message || 'Internal Server Error') });
     } else {
       next(err);
     }

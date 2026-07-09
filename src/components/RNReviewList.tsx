@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLanguage } from "../contexts/LanguageContext";
 import {
   ArrowLeft,
   CheckCircle,
@@ -22,8 +23,18 @@ export function RNReviewList({
   onConfirmReview,
 }: RNReviewListProps) {
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
-
   const selectedReview = pendingReviews.find((r) => r.id === selectedReviewId);
+  const { t } = useLanguage();
+
+  const handleAddNote = () => {
+    const note = window.prompt("Enter RN notes or override details:", "");
+    if (note && selectedReview) {
+      // In a real app, this would append to the review object and save to DB.
+      // For now, we'll just confirm it.
+      onConfirmReview(selectedReview.id);
+      setSelectedReviewId(null);
+    }
+  };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4">
@@ -36,7 +47,7 @@ export function RNReviewList({
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </button>
         <h1 className="text-2xl font-medium tracking-tight text-slate-800">
-          RN Review Pending Queue
+          {t('rn_review_queue')}
         </h1>
       </div>
 
@@ -45,7 +56,7 @@ export function RNReviewList({
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
           {pendingReviews.length === 0 ? (
             <div className="p-16 text-center text-slate-500 font-light text-lg">
-              No pending observations require RN review.
+              {t('no_pending_reviews')}
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -126,8 +137,8 @@ export function RNReviewList({
                     <Mic className="w-6 h-6 animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="font-medium text-slate-800">Caregiver Voice Intake</h3>
-                    <p className="text-xs text-slate-500">Transcribed and clinical note compiled by AI</p>
+                    <h3 className="font-medium text-slate-800">{t('caregiver_voice_intake')}</h3>
+                    <p className="text-xs text-slate-500">{t('transcribed_and_compiled')}</p>
                   </div>
                 </div>
                 
@@ -145,7 +156,7 @@ export function RNReviewList({
                 {selectedReview.aiResult.suggestedCarePlan && (
                   <div className="space-y-2">
                     <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-                      Native Confirmation Retranslation
+                      {t('native_confirmation_retranslation')}
                     </span>
                     <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-sm text-slate-600 leading-relaxed italic font-light">
                       "{selectedReview.aiResult.suggestedCarePlan}"
@@ -156,7 +167,7 @@ export function RNReviewList({
             ) : (
               <div className="w-full h-64 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200">
                 <ImageOff className="w-12 h-12 mb-2 opacity-30" />
-                <span className="text-sm font-medium">No Image Available</span>
+                <span className="text-sm font-medium">{t('no_image_available')}</span>
               </div>
             )}
           </div>
@@ -174,7 +185,7 @@ export function RNReviewList({
                 </p>
               </div>
               <span className="text-xs font-medium uppercase tracking-wider bg-teal-100 text-teal-800 px-2 py-1 rounded">
-                Needs RN Sign-off
+                {t('requires_rn_signature')}
               </span>
             </div>
 
@@ -253,7 +264,7 @@ export function RNReviewList({
               {selectedReview.aiResult.suggestedCarePlan && (
                 <div className="mt-4">
                   <span className="block text-xs font-normal text-slate-400 uppercase mb-2">
-                    AI Suggested Care Plan (Aged Care Guidelines)
+                    {t('ai_suggested_care_plan')}
                   </span>
                   <div className="bg-indigo-50 text-indigo-800 p-4 rounded-xl border border-indigo-100 font-medium text-sm whitespace-pre-wrap leading-relaxed shadow-sm">
                     {selectedReview.aiResult.suggestedCarePlan}
@@ -263,13 +274,12 @@ export function RNReviewList({
 
               <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
                 <p className="text-xs text-slate-400 text-center font-light">
-                  AI observation, not a medical diagnosis. RN confirmation
-                  required.
+                  {t("ai_observation_disclaimer")}
                 </p>
                 <div className="grid grid-cols-2 gap-3">
-                  <button className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                  <button onClick={handleAddNote} className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
                     <Edit3 className="w-4 h-4" />
-                    Add Note / Override
+                    {t('add_note_override')}
                   </button>
                   <button
                     onClick={() => {
@@ -279,7 +289,7 @@ export function RNReviewList({
                     className="py-3 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm"
                   >
                     <CheckCircle className="w-4 h-4" />
-                    Confirm & Save to Record
+                    {t('confirm_save_record')}
                   </button>
                 </div>
               </div>

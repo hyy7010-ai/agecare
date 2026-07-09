@@ -17,7 +17,7 @@ import {
   Resident,
 } from "../types";
 import { db } from "../lib/firebase";
-import { subscribeResidents, seedResidentsIfEmpty, FirestoreResident } from "../lib/residents";
+import { subscribeResidents, seedResidentsIfEmpty, FirestoreResident, updateBasicCareTask, updateCareMinutes } from "../lib/residents";
 import {
   collection,
   onSnapshot,
@@ -161,7 +161,7 @@ export const DashboardContainer: React.FC = () => {
       }
 
       seedDatabaseIfNeeded();
-      seedResidentsIfEmpty().catch(console.error);
+      seedResidentsIfEmpty().catch((e) => console.warn("Seed warning:", e));
 
       // Listen for new high-priority SIRS Events
       let isInitialSnapshot = true;
@@ -191,7 +191,7 @@ export const DashboardContainer: React.FC = () => {
           });
         },
         (error) => {
-          console.error("Error fetching SIRS events: ", error);
+          console.warn("Error fetching SIRS events: ", error);
         }
       );
 
@@ -239,7 +239,7 @@ export const DashboardContainer: React.FC = () => {
         setResidents(mapped);
         setIsLoading(false);
       }, (error) => {
-        console.error("Error fetching residents: ", error);
+        console.warn("Error fetching residents: ", error);
         setIsLoading(false);
       });
 
@@ -257,11 +257,11 @@ export const DashboardContainer: React.FC = () => {
           setPendingReviews(data);
         },
         (error) => {
-          console.error("Error fetching reviews: ", error);
+          console.warn("Error fetching reviews: ", error);
         },
       );
     } catch (e) {
-      console.error("Dashboard effect error", e);
+      console.warn("Dashboard effect error", e);
       setIsLoading(false);
     }
 
@@ -386,7 +386,11 @@ export const DashboardContainer: React.FC = () => {
           rnReviews: pendingReviews
         })
       });
-      const data = await response.json();
+      const text = await response.text();
+      if (text.trim().startsWith("<")) {
+        throw new Error("由于浏览器安全限制，AI 请求被拦截。请点击预览区右上角的 ↗️ 按钮，在【新标签页】中打开应用即可正常使用。");
+      }
+      const data = JSON.parse(text);
       if (!response.ok) throw new Error(data.error);
       setHandoverText(data.result);
     } catch (err) {
@@ -713,6 +717,17 @@ export const DashboardContainer: React.FC = () => {
             canLogSirs={canLogSirs}
             isCaregiver={isCaregiver}
             pendingReviews={pendingReviews}
+            onToggleCareTask={(id, task, currentValue) => {
+              updateBasicCareTask(id, task, !currentValue).catch(e => console.error("Failed to update task", e));
+            }}
+            onUpdateCareMinutes={(id, minutes) => {
+              updateCareMinutes(id, minutes).catch(e => console.error("Failed to update care minutes", e));
+            }}
+            onReviewClick={(review) => {
+              if (review.residentId) {
+                handleResidentClick(review.residentId);
+              }
+            }}
           />
         )}
 
