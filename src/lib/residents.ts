@@ -120,6 +120,22 @@ export async function updateBasicCareTask(id: string, task: "bath" | "meal" | "t
   }
 }
 
+export async function updateAdlStatuses(id: string, adlUpdates: { bathStatus?: string; mealStatus?: string; toiletStatus?: string }) {
+  try {
+    const updates: any = {};
+    if (adlUpdates.bathStatus) updates["basicCareTasks.bath"] = adlUpdates.bathStatus === "done";
+    if (adlUpdates.mealStatus) updates["basicCareTasks.meal"] = adlUpdates.mealStatus === "eaten";
+    if (adlUpdates.toiletStatus) updates["basicCareTasks.toilet"] = adlUpdates.toiletStatus === "independent";
+    
+    if (Object.keys(updates).length > 0) {
+      await updateDoc(doc(db, COLLECTION_NAME, id), updates);
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `${COLLECTION_NAME}/${id}`);
+    throw error;
+  }
+}
+
 export async function updateCareMinutes(id: string, minutes: number) {
   try {
     await updateDoc(doc(db, COLLECTION_NAME, id), {

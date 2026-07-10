@@ -4,6 +4,10 @@ type Language = 'en' | 'zh' | 'tl';
 
 const translations = {
   en: {
+    quick_log: "Quick Log",
+    timeline: "Timeline",
+    no_recent_activity: "No recent activity.",
+    blood_glucose: "Blood Glucose",
     take_photo: "Take Photo",
     submit: "Submit",
     confirm: "Confirm",

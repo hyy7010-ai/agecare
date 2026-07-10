@@ -29,6 +29,9 @@ interface ResidentProfileProps {
   ) => void;
   isCaregiver: boolean;
   onLogSirs?: (description: string, sirsResult: any) => void;
+  onAdlUpdate?: (adlUpdates: any) => void;
+  onQuickLog?: (task: "bath" | "meal" | "toilet" | "blood_glucose" | string) => void;
+  timelineEvents?: any[];
 }
 
 export function ResidentProfile({
@@ -37,6 +40,9 @@ export function ResidentProfile({
   onSubmitObservation,
   isCaregiver,
   onLogSirs,
+  onAdlUpdate,
+  onQuickLog,
+  timelineEvents = [],
 }: ResidentProfileProps) {
   const { t, language } = useLanguage();
   const [isUploading, setIsUploading] = useState(false);
@@ -176,6 +182,9 @@ export function ResidentProfile({
 
       setCareNoteDraft(data.result.englishNote);
       setNativeConfirmation(data.result.nativeConfirmation);
+      if (data.result.adlUpdates && onAdlUpdate) {
+        onAdlUpdate(data.result.adlUpdates);
+      }
       setSuggestedFollowUps(data.result.suggestedFollowUps || []);
       setSirsAssessment(data.result.sirsAssessment || null);
       setCareNoteInput("Audio processed and translated by Native AI.");
@@ -417,6 +426,9 @@ export function ResidentProfile({
 
       setCareNoteDraft(data.result.englishNote);
       setNativeConfirmation(data.result.nativeConfirmation);
+      if (data.result.adlUpdates && onAdlUpdate) {
+        onAdlUpdate(data.result.adlUpdates);
+      }
     } catch (err: any) {
       console.error(err);
       setCareNoteError(err.message || "Failed to generate care note.");
@@ -602,6 +614,45 @@ export function ResidentProfile({
                 }`}
               ></div>
             </div>
+          </div>
+        </div>
+      </div>
+      {/* Care Tasks & Timeline */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-xl font-medium tracking-tight text-slate-800 mb-4">{t("quick_log") || "Quick Log"}</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {["bath", "meal", "toilet", "blood_glucose"].map((task) => (
+              <button
+                key={task}
+                onClick={() => onQuickLog && onQuickLog(task)}
+                className="flex flex-col items-center justify-center p-4 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 transition-colors gap-2 group"
+              >
+                <span className="text-sm font-medium text-slate-600 group-hover:text-indigo-700 uppercase tracking-wider">
+                  {t(task) || task.replace("_", " ")}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 overflow-hidden flex flex-col max-h-[400px]">
+          <h2 className="text-xl font-medium tracking-tight text-slate-800 mb-4">{t("timeline") || "Timeline"}</h2>
+          <div className="overflow-y-auto pr-2 flex-1 space-y-4">
+            {timelineEvents.length === 0 ? (
+              <p className="text-slate-500 text-sm italic">{t("no_recent_activity") || "No recent activity."}</p>
+            ) : (
+              timelineEvents.map((event: any, idx: number) => (
+                <div key={idx} className="flex gap-4">
+                  <div className="w-10 h-10 shrink-0 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-bold text-xs border border-indigo-100">
+                    {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                  <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl flex-1">
+                    <p className="text-sm text-slate-700">{event.aiResult?.observation || event.observation || "Care task logged"}</p>
+                    {event.photoUrl && <img src={event.photoUrl} alt="Log attachment" className="mt-2 rounded-lg max-h-32 object-cover border border-slate-200" />}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

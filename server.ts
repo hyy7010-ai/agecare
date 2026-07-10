@@ -62,6 +62,9 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         const isOverloaded = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('TIMEOUT_RETRYABLE') || msg.includes('fetch failed') || msg.includes('high demand') || msg.includes('overloaded');
         
         if (!isQuota && !isOverloaded) throw e;
+        if (isQuota) {
+          throw new Error("AI API rate limit (quota) exceeded. Please check your billing details or try again later.");
+        }
         
         if (i === maxRetries - 1) {
           throw new Error(`The AI service is temporarily busy. Last error: ${msg}. Please try again in a few seconds.`);
@@ -79,10 +82,11 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: AI Observation (Wound/Excrement)
   app.post('/api/vision', upload.single('observationImage'), async (req, res) => {
     try {
+      const language = req.body.language || "en";
       if (!req.file) {
         return res.status(400).json({ error: 'No image uploaded' });
       }
-      const language = req.body.language || "en";
+
 
       // Convert buffer to base64 for Gemini
       const fileData = {
@@ -172,9 +176,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // API Route: Audio Care Note Translation
   app.post('/api/audio-note', upload.single('audioRecording'), async (req, res) => {
     try {
+      const language = req.body.language || "en";
       if (!req.file) {
         return res.status(400).json({ error: 'No audio file uploaded' });
-      const language = req.body.language || "en";
+
       }
 
 
@@ -208,11 +213,19 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         - An accidental fall that results in injury, including falls that occur while staff are actively assisting the resident, MUST be categorised as "Fall resulting in injury".
         - Only use "Neglect" when the carer's description explicitly indicates care was withheld or the resident was left unattended when supervision was required.
         
+        Also, extract any Activities of Daily Living (ADL) updates if the audio explicitly mentions them.
+        Return 'adlUpdates' with:
+        - bathStatus: "done" if bathed, "due" if needs bath
+        - mealStatus: "eaten" if they ate, "missed" if they refused, "assisted" if helped
+        - toiletStatus: "independent" if they used toilet themselves, "assisted" if helped, "pad-change" if pad changed
+        If an ADL is not mentioned, omit the field.
+
         CRITICAL LANGUAGE INSTRUCTION: The values for englishNote, suggestedFollowUps, and autofillReport fields MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
         CRITICAL LANGUAGE INSTRUCTION: The values for incidentTitle, riskFlag, description, and suggestedActions MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
         Return your response in structured JSON format with these exact keys:
         - englishNote: string (the professional progress note in English)
         - nativeConfirmation: string (the translated confirmation in the carer's native language)
+        - adlUpdates: object (optional, containing bathStatus, mealStatus, toiletStatus)
         - suggestedFollowUps: array of strings (e.g., ["Commence neurological observations", "Notify Next of Kin", "Notify Medical Officer"], empty array if none)
         - sirsAssessment: object or null. If reportable, provide: 
           { 
@@ -247,6 +260,14 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
             properties: {
               englishNote: { type: Type.STRING },
               nativeConfirmation: { type: Type.STRING },
+              adlUpdates: {
+                type: Type.OBJECT,
+                properties: {
+                  bathStatus: { type: Type.STRING },
+                  mealStatus: { type: Type.STRING },
+                  toiletStatus: { type: Type.STRING }
+                }
+              },
               suggestedFollowUps: { 
                 type: Type.ARRAY,
                 items: { type: Type.STRING }
@@ -481,6 +502,13 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         
         CRITICAL TASK: Detect the language of the Casual Input. If it is NOT English (e.g. it is Mandarin, Tagalog, etc.), translate the final English note back into that detected language as a 'nativeConfirmation' so the carer can verify the record. If the input is in English, leave it empty.
 
+        Also, extract any Activities of Daily Living (ADL) updates if the input explicitly mentions them.
+        Return 'adlUpdates' with:
+        - bathStatus: "done" if bathed, "due" if needs bath
+        - mealStatus: "eaten" if they ate, "missed" if they refused, "assisted" if helped
+        - toiletStatus: "independent" if they used toilet themselves, "assisted" if helped, "pad-change" if pad changed
+        If an ADL is not mentioned, omit the field.
+
         Casual Input: "${input}"
         
         CRITICAL LANGUAGE INSTRUCTION: The values for englishNote, suggestedFollowUps, and autofillReport fields MUST be written in the language corresponding to language code: ${language}. Only the keys must remain in English.
@@ -488,6 +516,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
         Return your response in structured JSON format with these exact keys:
         - englishNote: string (the professional progress note in English, plain text without markdown)
         - nativeConfirmation: string (the translated confirmation in the carer's native language, or empty if English)
+        - adlUpdates: object (optional, containing bathStatus, mealStatus, toiletStatus)
       `;
 
       const response = await generateWithRetry({
@@ -499,7 +528,15 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
             type: Type.OBJECT,
             properties: {
               englishNote: { type: Type.STRING },
-              nativeConfirmation: { type: Type.STRING }
+              nativeConfirmation: { type: Type.STRING },
+              adlUpdates: {
+                type: Type.OBJECT,
+                properties: {
+                  bathStatus: { type: Type.STRING },
+                  mealStatus: { type: Type.STRING },
+                  toiletStatus: { type: Type.STRING }
+                }
+              }
             },
             required: ["englishNote", "nativeConfirmation"]
           },

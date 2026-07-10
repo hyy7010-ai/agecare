@@ -9,7 +9,9 @@ import { StaffManager } from "./StaffManager";
 import { AdminDashboard } from "./AdminDashboard";
 import { SirsReviewDashboard } from "./SirsReviewDashboard";
 import { FamilyDashboard } from "./FamilyDashboard";
+import { PlatformHub } from "./PlatformHub";
 import { useLanguage } from "../contexts/LanguageContext";
+import { CareTaskModal } from "./CareTaskModal";
 import {
   SIRSAlertData,
   PendingReview,
@@ -17,7 +19,7 @@ import {
   Resident,
 } from "../types";
 import { db } from "../lib/firebase";
-import { subscribeResidents, seedResidentsIfEmpty, FirestoreResident, updateBasicCareTask, updateCareMinutes } from "../lib/residents";
+import { subscribeResidents, seedResidentsIfEmpty, FirestoreResident, updateBasicCareTask, updateCareMinutes, updateAdlStatuses } from "../lib/residents";
 import {
   collection,
   onSnapshot,
@@ -38,7 +40,7 @@ export const DashboardContainer: React.FC = () => {
   const { userProfile, logout } = useAuth();
   const { lang, setLang, t, isOnline, toggleSimulateOffline } = useLanguage();
   const [currentScreen, setCurrentScreen] = useState<
-    "dashboard" | "profile" | "sirs" | "roster" | "rnReview" | "staff" | "admin" | "sirsReview"
+    "dashboard" | "profile" | "sirs" | "roster" | "rnReview" | "staff" | "admin" | "sirsReview" | "platform"
   >("dashboard");
   const [selectedResidentId, setSelectedResidentId] = useState<string | null>(
     null,
@@ -54,6 +56,7 @@ export const DashboardContainer: React.FC = () => {
   const [handoverText, setHandoverText] = useState<string | null>(null);
   const [familyAppreciation, setFamilyAppreciation] = useState<{name: string, time: string} | null>(null);
   const [offlineSyncCount, setOfflineSyncCount] = useState(0);
+  const [quickLogState, setQuickLogState] = useState<{residentId: string, taskType: string} | null>(null);
 
 
   useEffect(() => {
@@ -495,6 +498,19 @@ export const DashboardContainer: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+      {/* Simulator Tools Bar (Top) */}
+      <div className="bg-slate-800 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between z-50 relative border-b border-slate-900 shadow-sm gap-2">
+        <div className="font-bold tracking-wider uppercase text-slate-300">{t('simulator')}</div>
+        <div className="flex gap-2">
+            <button onClick={simulateFallAlert} className="bg-red-500/20 text-red-300 hover:bg-red-500 hover:text-white border border-red-500/30 px-3 py-1 rounded transition-colors font-medium">
+              {t('trigger_iot_fall_alert')}
+            </button>
+            <button onClick={() => setIsRnCoverageLost(prev => !prev)} className="bg-amber-500/20 text-amber-300 hover:bg-amber-500 hover:text-white border border-amber-500/30 px-3 py-1 rounded transition-colors font-medium">
+              {t('toggle_rn_coverage_alert')}
+            </button>
+        </div>
+      </div>
+
       {!isOnline && (
         <div className="bg-amber-100 text-amber-800 px-4 py-2 text-sm flex items-center justify-center font-medium shadow-inner">
           <WifiOff className="w-4 h-4 mr-2" />
@@ -624,6 +640,17 @@ export const DashboardContainer: React.FC = () => {
                 </span>
               </button>
             )}
+            {(isAdmin || isManager) && (
+              <button
+                onClick={() => setCurrentScreen("platform")}
+                className="flex items-center gap-1.5 sm:gap-2 bg-indigo-600 text-white border border-indigo-700 px-2 sm:px-3 py-1.5 rounded-md hover:bg-indigo-700 transition-all font-sans shrink-0 mr-2 shadow-sm"
+              >
+                <Globe className="w-3.5 h-3.5 hidden sm:block" />
+                <span className="text-xs font-bold">
+                  Platform Hub
+                </span>
+              </button>
+            )}
 
             <button
               onClick={() => logout()}
@@ -720,6 +747,7 @@ export const DashboardContainer: React.FC = () => {
             onToggleCareTask={(id, task, currentValue) => {
               updateBasicCareTask(id, task, !currentValue).catch(e => console.error("Failed to update task", e));
             }}
+            onQuickLog={(id, task) => setQuickLogState({ residentId: id, taskType: task })}
             onUpdateCareMinutes={(id, minutes) => {
               updateCareMinutes(id, minutes).catch(e => console.error("Failed to update care minutes", e));
             }}
@@ -741,9 +769,16 @@ export const DashboardContainer: React.FC = () => {
                 addPendingReview(selectedResidentId, photoUrl, aiResult)
               }
               isCaregiver={isCaregiver}
+              onQuickLog={(task) => setQuickLogState({ residentId: selectedResidentId, taskType: task })}
+              timelineEvents={pendingReviews.filter(r => r.residentId === selectedResidentId)}
               onLogSirs={(description, sirsResult) => {
                 setSirsInitialData({ description, sirsResult, residentName: residents.find(r => r.id === selectedResidentId)?.name });
                 setCurrentScreen("sirs");
+              }}
+              onAdlUpdate={(updates) => {
+                if (selectedResidentId) {
+                  updateAdlStatuses(selectedResidentId, updates).catch(e => console.error("Failed to update ADL", e));
+                }
               }}
             />
           )}
@@ -779,6 +814,10 @@ export const DashboardContainer: React.FC = () => {
         
         {currentScreen === "admin" && (isAdmin || isManager) && (
           <AdminDashboard />
+        )}
+
+        {currentScreen === "platform" && (
+          <PlatformHub onBack={() => setCurrentScreen("dashboard")} />
         )}
 
         {currentScreen === "sirsReview" && canDismissSirs && (
@@ -833,22 +872,27 @@ export const DashboardContainer: React.FC = () => {
         </div>
       )}
 
-      {/* Simulator Tools */}
-      <div className="fixed bottom-6 left-6 z-40 bg-white/90 backdrop-blur border border-slate-200 p-3 rounded-xl shadow-lg opacity-50 hover:opacity-100 transition-all flex flex-col gap-2">
-        <div className="text-xs font-bold text-slate-500 mb-1 px-1 uppercase tracking-wider">{t('simulator')}</div>
-        <button
-          onClick={simulateFallAlert}
-          className="text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg transition-colors text-left"
-        >
-          {t('trigger_iot_fall_alert')}
-        </button>
-        <button
-          onClick={() => setIsRnCoverageLost(prev => !prev)}
-          className="text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 px-3 py-2 rounded-lg transition-colors text-left"
-        >
-          {t('toggle_rn_coverage_alert')}
-        </button>
-      </div>
+      {/* Quick Log Modal */}
+      {quickLogState && (
+        <CareTaskModal
+          resident={residents.find(r => r.id === quickLogState.residentId)!}
+          taskType={quickLogState.taskType}
+          onClose={() => setQuickLogState(null)}
+          onSave={async (updates) => {
+            if (quickLogState.residentId) {
+              await updateAdlStatuses(quickLogState.residentId, updates).catch(e => console.error("Failed to update ADL", e));
+              if (updates.note) {
+                 await addPendingReview(quickLogState.residentId, updates.photoUrl || "", {
+                    observationType: "care_note",
+                    observation: updates.note,
+                    potentialRiskFlag: "None"
+                 });
+              }
+              setQuickLogState(null);
+            }
+          }}
+        />
+      )}
 
     </div>
   );

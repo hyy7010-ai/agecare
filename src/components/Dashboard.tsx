@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ShieldAlert, Search, Filter, Clock, CheckCircle, X, Edit2 } from "lucide-react";
 import { Resident, PendingReview } from "../types";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -11,6 +11,7 @@ interface DashboardProps {
   isCaregiver?: boolean;
   pendingReviews?: PendingReview[];
   onToggleCareTask?: (id: string, task: "bath" | "meal" | "toilet", currentValue: boolean) => void;
+  onQuickLog?: (id: string, task: "bath" | "meal" | "toilet") => void;
   onUpdateCareMinutes?: (id: string, minutes: number) => void;
   onReviewClick?: (review: PendingReview) => void;
 }
@@ -23,6 +24,7 @@ export function Dashboard({
   isCaregiver,
   pendingReviews = [],
   onToggleCareTask,
+  onQuickLog,
   onUpdateCareMinutes,
   onReviewClick
 }: DashboardProps) {
@@ -80,7 +82,7 @@ export function Dashboard({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {filteredResidents.map((resident) => (
-          <button
+          <div
             key={resident.id}
             onClick={() => onResidentClick(resident.id)}
             className="group block w-full text-left bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-[2rem] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.08)] hover:border-indigo-300 hover:-translate-y-1 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-indigo-500/30 relative overflow-hidden"
@@ -132,8 +134,8 @@ export function Dashboard({
                   label={t(resident.bathStatus as any) || resident.bathStatus}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onToggleCareTask) {
-                      onToggleCareTask(resident.id, "bath", resident.bathStatus === "done");
+                    if (onQuickLog) {
+                      onQuickLog(resident.id, "bath");
                     }
                   }}
                 />
@@ -153,8 +155,8 @@ export function Dashboard({
                   label={t(resident.mealStatus as any) || resident.mealStatus}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onToggleCareTask) {
-                      onToggleCareTask(resident.id, "meal", resident.mealStatus === "eaten");
+                    if (onQuickLog) {
+                      onQuickLog(resident.id, "meal");
                     }
                   }}
                 />
@@ -174,8 +176,8 @@ export function Dashboard({
                   label={t(resident.toiletStatus as any) || resident.toiletStatus}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (onToggleCareTask) {
-                      onToggleCareTask(resident.id, "toilet", resident.toiletStatus === "independent");
+                    if (onQuickLog) {
+                      onQuickLog(resident.id, "toilet");
                     }
                   }}
                 />
@@ -187,7 +189,7 @@ export function Dashboard({
               onUpdate={onUpdateCareMinutes}
               label={t('care_minutes')}
             />
-          </button>
+          </div>
         ))}
       </div>
 
@@ -314,12 +316,18 @@ function CareMinutesSlider({
   const [localValue, setLocalValue] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState("");
+  // Clear local value when upstream resident value updates
+  useEffect(() => {
+    setLocalValue(null);
+  }, [resident.careMinutesToday]);
+
   const displayValue = localValue !== null ? localValue : resident.careMinutesToday;
   const maxMins = Math.max(resident.careMinutesTarget, 200);
 
   const handleEditSubmit = () => {
     const val = parseInt(inputValue, 10);
     if (!isNaN(val) && onUpdate) {
+      setLocalValue(val);
       onUpdate(resident.id, val);
     }
     setIsEditing(false);
@@ -391,14 +399,12 @@ function CareMinutesSlider({
             if (onUpdate && localValue !== null) {
               onUpdate(resident.id, localValue);
             }
-            setLocalValue(null);
           }}
           onTouchEnd={(e) => {
             e.stopPropagation();
             if (onUpdate && localValue !== null) {
               onUpdate(resident.id, localValue);
             }
-            setLocalValue(null);
           }}
           onClick={(e) => e.stopPropagation()}
           className="absolute inset-0 w-full h-full appearance-none bg-transparent cursor-pointer
