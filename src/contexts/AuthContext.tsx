@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { logAuditAction } from "../lib/audit";
 import { UserProfile, UserRole } from "../types";
 
 interface AuthContextType {
@@ -150,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             const res = await createUserWithEmailAndPassword(auth, email, password);
             user = res.user;
           } catch (signUpErr: any) {
-            console.warn("Real user creation failed, trying anonymous:", signUpErr);
+            console.warn("Real user creation failed, trying anonymous:", signUpErr.code, signUpErr.message);
             try {
               const res = await signInAnonymously(auth);
               user = res.user;
@@ -163,7 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             const res = await signInAnonymously(auth);
             user = res.user;
           } catch (anonErr) {
-            console.warn("Anonymous fallback failed (this is expected if not enabled).");
+            console.warn("Anonymous fallback failed:", anonErr.code, anonErr.message);
           }
         }
       }

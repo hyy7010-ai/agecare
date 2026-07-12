@@ -30,8 +30,9 @@ export function Dashboard({
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedReview, setSelectedReview] = useState<PendingReview | null>(null);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
+   
   const filteredResidents = residents.filter(r => 
     r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     r.room?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -44,6 +45,8 @@ export function Dashboard({
       .map((n) => n[0])
       .join("")
       .substring(0, 2);
+
+  const hasDeidentified = filteredResidents.some((r) => (r as any).deidentified);
 
   return (
     <div className="space-y-8 font-light relative z-10">
@@ -79,6 +82,27 @@ export function Dashboard({
           )}
         </div>
       </div>
+
+      {hasDeidentified && (
+        <div className="bg-gradient-to-r from-indigo-50 to-indigo-100/30 border border-indigo-100 rounded-3xl p-6 flex items-start gap-5 shadow-sm animate-in fade-in slide-in-from-top-4">
+          <div className="w-12 h-12 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-200 shadow-inner">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <div>
+            <h4 className="font-bold text-indigo-950 text-base flex items-center gap-2">
+              <span>{lang === "zh" ? "🔒 澳大利亚隐私法（APP 11）班次数据隔离保护中" : "🔒 Aussie Privacy Act (APP 11) Least-Privilege Shift Isolation Active"}</span>
+              <span className="text-[10px] uppercase tracking-wider bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded-full font-bold">Compliant</span>
+            </h4>
+            <p className="text-sm text-indigo-800/80 mt-1 font-medium leading-relaxed">
+              {lang === "zh"
+                ? "系统当前以注册护士(RN)及护工排班授权限制。您作为护工仅分配了 Joyce 和 Arthur (Room 101/102) 的班次。其他不属于当前班次的居民个人信息已被自动去标识化，以保障隐私合规并防范未经授权的 PII 数据泄露。"
+                : "The system restricts caregiver access based on rostered shifts. You are only rostered to Joyce and Arthur (Room 101/102). Other residents' names and clinical history have been dynamically de-identified to prevent unauthorized PII disclosure."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {filteredResidents.map((resident) => (

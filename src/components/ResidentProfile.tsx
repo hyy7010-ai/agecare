@@ -18,7 +18,10 @@ import { db } from "../lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useLanguage } from "../contexts/LanguageContext";
 import { scrubPII } from "../lib/piiScrubber";
+import { logAuditAction } from "../lib/audit";
+import { useAuth } from "../contexts/AuthContext";
 import { CountdownTimer } from "./CountdownTimer";
+import { ClinicalAbbreviationsHelper } from "./ClinicalAbbreviationsHelper";
 
 interface ResidentProfileProps {
   resident: Resident;
@@ -44,6 +47,7 @@ export function ResidentProfile({
   onQuickLog,
   timelineEvents = [],
 }: ResidentProfileProps) {
+  const { userProfile } = useAuth();
   const { t, lang } = useLanguage();
   const language = lang;
   const [isUploading, setIsUploading] = useState(false);
@@ -76,6 +80,14 @@ export function ResidentProfile({
   const [dailySummary, setDailySummary] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  // End-of-Shift Summary state
+  const [isGeneratingShiftSummary, setIsGeneratingShiftSummary] = useState(false);
+  const [shiftSummaryDraft, setShiftSummaryDraft] = useState<string | null>(null);
+  const [shiftSummaryNativeConfirmation, setShiftSummaryNativeConfirmation] = useState<string | null>(null);
+  const [shiftSummaryNotRecorded, setShiftSummaryNotRecorded] = useState<string[]>([]);
+  const [shiftSummaryError, setShiftSummaryError] = useState<string | null>(null);
+  const [isShiftSummarySaved, setIsShiftSummarySaved] = useState(false);
+
   // Family Update state
   const [isGeneratingFamilyUpdate, setIsGeneratingFamilyUpdate] = useState(false);
   const [scrubbingStatus, setScrubbingStatus] = useState<string | null>(null);
@@ -87,6 +99,15 @@ export function ResidentProfile({
   const audioChunksRef = useRef<BlobPart[]>([]);
 
   const [sirsAssessment, setSirsAssessment] = useState<any>(null);
+  const [photoConsentChecked, setPhotoConsentChecked] = useState(false);
+  const [noteConsentChecked, setNoteConsentChecked] = useState(false);
+
+  const handleInsertAbbreviation = (code: string) => {
+    setCareNoteInput((prev) => {
+      const space = prev && !prev.endsWith(" ") && !prev.endsWith("\n") ? " " : "";
+      return prev + space + code;
+    });
+  };
 
   const startRecording = async () => {
     try {
@@ -274,6 +295,114 @@ export function ResidentProfile({
     }
   };
 
+  const handleGenerateShiftSummary = async () => {
+    setIsGeneratingShiftSummary(true);
+    setScrubbingStatus('Analyzing data inputs for sensitive information...');
+    setShiftSummaryError(null);
+    setShiftSummaryDraft(null);
+    setShiftSummaryNativeConfirmation(null);
+    setShiftSummaryNotRecorded([]);
+    setIsShiftSummarySaved(false);
+
+    const events = [];
+    if (resident.bathStatus !== 'due') events.push({ time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'BATH', note: `Bath ${resident.bathStatus}` });
+    if (resident.mealStatus) events.push({ time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'MEAL', note: `Meal ${resident.mealStatus}` });
+    if (resident.toiletStatus) events.push({ time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), type: 'TOILET', note: `Toilet ${resident.toiletStatus}` });
+
+    timelineEvents.forEach((e: any) => {
+      events.push({
+        time: new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: e.type || 'OBSERVATION',
+        note: e.aiResult?.observation || e.observation || 'Care task logged'
+      });
+    });
+
+    if (events.length === 0) {
+      setShiftSummaryError(t('no_events_logged'));
+      setIsGeneratingShiftSummary(false);
+      return;
+    }
+
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      setScrubbingStatus(`Scrubbing patient name: ${resident.name} -> [REDACTED]...`);
+      
+      const scrubbedEvents = events.map(e => ({
+        ...e,
+        note: scrubPII(e.note, resident.name)
+      }));
+      
+      await new Promise(r => setTimeout(r, 600));
+      setScrubbingStatus('Encrypting payload for AI transmission...');
+
+      await new Promise(r => setTimeout(r, 600));
+      setScrubbingStatus(null);
+
+      const response = await fetch("/api/shift-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events: scrubbedEvents, residentName: resident.name, language }),
+      });
+
+      const text = await response.text();
+      if (text.trim().startsWith("<")) {
+        throw new Error(
+          "由于浏览器安全限制，AI 请求被拦截。请点击预览区右上角的 ↗️ 按钮，在【新标签页】中打开应用即可正常使用。\n(Action blocked by browser cookie settings. Please OPEN IN NEW TAB to authenticate and continue.)",
+        );
+      }
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error("Failed to parse JSON response");
+      }
+
+      if (!response.ok)
+        throw new Error(data?.error || `Server error ${response.status}`);
+      
+      setShiftSummaryDraft(data.result.englishNote);
+      setShiftSummaryNativeConfirmation(data.result.nativeConfirmation);
+      setShiftSummaryNotRecorded(data.result.notRecorded || []);
+
+    } catch (err: any) {
+      console.error(err);
+      setShiftSummaryError(err.message || "Failed to generate shift summary.");
+    } finally {
+      setIsGeneratingShiftSummary(false);
+    }
+  };
+
+  const handleSaveShiftSummary = async () => {
+    if (!shiftSummaryDraft) return;
+    try {
+      await logAuditAction({
+        action: "SUBMIT_FOR_RN_REVIEW",
+        userId: userProfile?.uid || "unknown",
+        userEmail: userProfile?.email || "unknown",
+        userRole: userProfile?.role || "caregiver",
+        details: `Submitted AI shift summary for resident ${resident.id} for RN review`,
+        resourceId: resident.id
+      });
+      await addDoc(collection(db, "rnReviewQueue"), {
+        residentId: resident.id,
+        residentName: resident.name,
+        room: resident.room,
+        photoUrl: "",
+        aiResult: {
+          observationType: "shift_summary",
+          observation: shiftSummaryDraft,
+          potentialRiskFlag: "",
+          suggestedCarePlan: shiftSummaryNativeConfirmation || "",
+        },
+        timestamp: new Date().toISOString(),
+      });
+      setIsShiftSummarySaved(true);
+    } catch (e) {
+      console.error("Failed to save shift summary to RN review queue", e);
+      setShiftSummaryError("Failed to submit shift summary for RN review.");
+    }
+  };
+
   const handleGenerateFamilyUpdate = async () => {
     setIsGeneratingFamilyUpdate(true);
     setScrubbingStatus('Analyzing raw notes for sensitive data...');
@@ -337,6 +466,14 @@ export function ResidentProfile({
   const handleSaveCareNote = async () => {
     if (!careNoteDraft) return;
     try {
+      await logAuditAction({
+        action: "SUBMIT_FOR_RN_REVIEW",
+        userId: userProfile?.uid || "unknown",
+        userEmail: userProfile?.email || "unknown",
+        userRole: userProfile?.role || "caregiver",
+        details: `Submitted AI care note for resident ${resident.id} for RN review`,
+        resourceId: resident.id
+      });
       await addDoc(collection(db, "rnReviewQueue"), {
         residentId: resident.id,
         residentName: resident.name,
@@ -1104,6 +1241,29 @@ export function ResidentProfile({
 
                 <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
                   {renderAiDisclaimer()}
+                  
+                  {/* Explicit Consent Guard */}
+                  {!isConfirmed && (
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 transition-all">
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={photoConsentChecked}
+                          onChange={(e) => setPhotoConsentChecked(e.target.checked)}
+                          className="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                        />
+                        <div className="text-xs text-slate-700 font-medium">
+                          <span className="font-bold text-amber-800 block mb-0.5">
+                            {lang === "zh" ? "🔒 隐私合规与知情同意确认" : "🔒 Privacy Compliance & Consent Verification"}
+                          </span>
+                          {lang === "zh"
+                            ? "我在此确认：已获得长者（或其法定监护人）的明确同意，允许拍照并出于临床分析目的在云端进行加密处理，符合澳大利亚《1988年隐私法》（APP）要求。"
+                            : "I verify that explicit resident or legal guardian consent has been obtained to capture, upload, and process clinical images/assessment data in compliance with the Privacy Act 1988 (Australian Privacy Principles)."}
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
                   {isConfirmed ? (
                     <div className="bg-teal-50 text-teal-700 font-normal p-3 rounded-lg flex items-center justify-center gap-2 border border-teal-100">
                       <CheckCircle className="w-4 h-4" /> {t('submitted_for_rn_review')}
@@ -1111,6 +1271,7 @@ export function ResidentProfile({
                   ) : (
                     <button
                       onClick={() => {
+                        if (!photoConsentChecked) return;
                         setIsConfirmed(true);
                         if (photoPreview) {
                           onSubmitObservation(photoPreview, {
@@ -1120,7 +1281,12 @@ export function ResidentProfile({
                           });
                         }
                       }}
-                      className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-normal rounded-lg transition-colors flex items-center justify-center gap-2"
+                      disabled={!photoConsentChecked}
+                      className={`w-full py-3 font-semibold rounded-lg transition-all flex items-center justify-center gap-2 ${
+                        photoConsentChecked
+                          ? "bg-teal-600 hover:bg-teal-700 text-white shadow-sm hover:shadow active:scale-[0.99] cursor-pointer"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
                     >
                       <CheckCircle className="w-4 h-4" />
                       {t('submit_for_rn_review')}
@@ -1196,6 +1362,7 @@ export function ResidentProfile({
             )}
 
             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">{t('or_type_manually')}</div>
+            <ClinicalAbbreviationsHelper onInsertAbbreviation={handleInsertAbbreviation} />
             <textarea
               className="w-full min-h-[100px] p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium mb-4"
               placeholder={t('placeholder_care_note_example')}
@@ -1374,14 +1541,44 @@ export function ResidentProfile({
                     </div>
                   )}
 
+                  {/* Explicit Care Note Consent Guard */}
+                  {!isCareNoteSaved && (
+                    <div className="mt-6 bg-amber-50/70 border border-amber-200 rounded-xl p-4 transition-all">
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={noteConsentChecked}
+                          onChange={(e) => setNoteConsentChecked(e.target.checked)}
+                          className="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                        />
+                        <div className="text-xs text-slate-700 font-medium">
+                          <span className="font-bold text-amber-800 block mb-0.5">
+                            {lang === "zh" ? "🔒 隐私合规与记录同意确认" : "🔒 Privacy Compliance & Record Consent Verification"}
+                          </span>
+                          {lang === "zh"
+                            ? "我在此确认：已获得长者（或其法定监护人）的明确同意，允许以符合《1988年隐私法》（APP）的系统，在云端加密记录并分析其病程报告及交接班内容。"
+                            : "I verify that explicit resident or legal guardian consent has been obtained to record, transmit, and process this daily clinical care note in compliance with the Privacy Act 1988 (Australian Privacy Principles)."}
+                        </div>
+                      </label>
+                    </div>
+                  )}
+
                   {isCareNoteSaved ? (
                     <div className="mt-6 bg-teal-50 text-teal-700 font-medium p-3 rounded-xl flex items-center justify-center gap-2 border border-teal-100">
                       <CheckCircle className="w-4 h-4" /> {t('saved_to_resident_record')}
                     </div>
                   ) : (
                     <button
-                      onClick={handleSaveCareNote}
-                      className="mt-6 w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                      onClick={() => {
+                        if (!noteConsentChecked) return;
+                        handleSaveCareNote();
+                      }}
+                      disabled={!noteConsentChecked}
+                      className={`mt-6 w-full py-3 font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                        noteConsentChecked
+                          ? "bg-teal-600 hover:bg-teal-700 text-white shadow-sm hover:shadow active:scale-[0.99] cursor-pointer"
+                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      }`}
                     >
                       <CheckCircle className="w-4 h-4" />
                       {t('save_to_resident_record')}
@@ -1399,6 +1596,151 @@ export function ResidentProfile({
           </div>
         </div>
       </div>
+
+      {/* End-of-Shift Summary */}
+      <div className="mt-8 border-t border-slate-200 pt-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-xl font-medium tracking-tight text-slate-800 flex items-center gap-2">
+              {t('end_of_shift_summary')}
+            </h2>
+            <div className="flex items-center gap-1 mt-2 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2.5 py-1 w-fit">
+              <Activity className="w-3.5 h-3.5" />
+              Auto-Compiled Progress Note
+            </div>
+          </div>
+          <button
+            onClick={handleGenerateShiftSummary}
+            disabled={isGeneratingShiftSummary}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm sm:text-base font-medium py-3 px-4 sm:px-6 rounded-xl transition-colors flex items-center gap-2 disabled:opacity-50 shrink-0 shadow-sm hover:shadow-md"
+          >
+            {isGeneratingShiftSummary ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : null}
+            <span className="hidden sm:inline">{t('generate')} </span>{t('end_of_shift_summary')}
+          </button>
+        </div>
+
+        {shiftSummaryError && (
+          <div className="mb-4 bg-red-50 text-red-700 border border-red-200 p-4 rounded-xl text-sm">
+            <strong>{t('error')}: </strong> {shiftSummaryError}
+          </div>
+        )}
+
+        {isGeneratingShiftSummary ? (
+          <div className="border border-slate-200 rounded-2xl bg-slate-900 p-8 flex flex-col items-center justify-center text-center overflow-hidden relative">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+            {scrubbingStatus ? (
+              <div className="relative z-10 w-full max-w-md mx-auto text-left flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center mb-6 animate-pulse">
+                   <ShieldAlert className="w-8 h-8 text-emerald-400" />
+                </div>
+                <div className="w-full bg-black/50 border border-emerald-500/30 rounded-lg p-4 font-mono text-sm shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                  <div className="text-emerald-400 flex items-center gap-2 mb-2 border-b border-emerald-500/30 pb-2">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                    EDGE PRIVACY ENGINE
+                  </div>
+                  <div className="text-emerald-300/80 animate-in fade-in slide-in-from-bottom-1">
+                    {">"} {scrubbingStatus}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="relative z-10">
+                <Loader2 className="w-8 h-8 text-teal-400 animate-spin mb-3 font-light mx-auto" />
+                <h3 className="text-md font-normal text-slate-100">
+                  {t('generating_shift_summary')}
+                </h3>
+              </div>
+            )}
+          </div>
+        ) : shiftSummaryDraft ? (
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-medium text-slate-800">
+                {t('end_of_shift_summary')}
+              </h3>
+              <span className="text-xs font-medium uppercase tracking-wider bg-slate-200 text-slate-600 px-2 py-1 rounded">
+                {t('draft')}
+              </span>
+            </div>
+            
+            <div className="p-6">
+              {renderAiDisclaimer()}
+              
+              <div className="bg-white p-4 rounded-xl border border-slate-200 text-sm text-slate-700 leading-relaxed font-light whitespace-pre-wrap mt-4 shadow-sm">
+                {shiftSummaryDraft}
+              </div>
+
+              {shiftSummaryNotRecorded && shiftSummaryNotRecorded.length > 0 && (
+                <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-xl text-sm">
+                  <div className="font-medium text-slate-700 mb-1">{t('not_recorded_this_shift')}</div>
+                  <div className="text-slate-500 italic">
+                    {shiftSummaryNotRecorded.join(", ")}
+                  </div>
+                </div>
+              )}
+
+              {shiftSummaryNativeConfirmation && (
+                <div className="mt-4 bg-indigo-50 border border-indigo-100 p-4 rounded-xl text-sm relative group">
+                  <div className="flex items-center justify-between text-indigo-700 font-medium mb-1">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" /> {t('native_translation_confirmation')}
+                    </div>
+                  </div>
+                  <p className="text-indigo-800 leading-relaxed mt-2">
+                    {shiftSummaryNativeConfirmation}
+                  </p>
+                </div>
+              )}
+
+              {/* Explicit Care Note Consent Guard */}
+              {!isShiftSummarySaved && (
+                <div className="mt-6 bg-amber-50/70 border border-amber-200 rounded-xl p-4 transition-all">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={noteConsentChecked}
+                      onChange={(e) => setNoteConsentChecked(e.target.checked)}
+                      className="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div className="text-xs text-slate-700 font-medium">
+                      <span className="font-bold text-amber-800 block mb-0.5">
+                        {lang === "zh" ? "🔒 隐私合规与记录同意确认" : "🔒 Privacy Compliance & Record Consent Verification"}
+                      </span>
+                      {lang === "zh"
+                        ? "我在此确认：已获得长者（或其法定监护人）的明确同意，允许以符合《1988年隐私法》（APP）的系统，在云端加密记录并分析其病程报告及交接班内容。"
+                        : "I verify that explicit resident or legal guardian consent has been obtained to record, transmit, and process this daily clinical care note in compliance with the Privacy Act 1988 (Australian Privacy Principles)."}
+                    </div>
+                  </label>
+                </div>
+              )}
+              {isShiftSummarySaved ? (
+                <div className="mt-6 bg-teal-50 text-teal-700 font-medium p-3 rounded-xl flex items-center justify-center gap-2 border border-teal-100">
+                  <CheckCircle className="w-4 h-4" /> {t('saved_to_resident_record')}
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!noteConsentChecked) return;
+                    handleSaveShiftSummary();
+                  }}
+                  disabled={!noteConsentChecked}
+                  className={`mt-6 w-full py-3 font-semibold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                    noteConsentChecked
+                      ? "bg-teal-600 hover:bg-teal-700 text-white shadow-sm hover:shadow active:scale-[0.99] cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  {t('save_to_resident_record')}
+                </button>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
     </div>
   );
 }

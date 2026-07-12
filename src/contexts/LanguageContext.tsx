@@ -4,6 +4,30 @@ type Language = 'en' | 'zh' | 'tl';
 
 const translations = {
   en: {
+    err_test_login: "Failed to login with test account.",
+    err_auth_disabled: "Email & Password sign-in is disabled in your Firebase console. Please enable it, or use test accounts.",
+    err_invalid_creds: "Failed to login. Please check your credentials.",
+    err_google_login: "Failed to sign in with Google: ",
+    system_title: "Smart Compliant Care System",
+    system_subtitle: "Protecting residents with AI-driven visual observations, automated SIRS reporting, and intelligent compliance guardrails.",
+    welcome_back: "Welcome Back",
+    sign_in_to_access: "Sign in to access your dashboard",
+    staff_logins: "Staff Logins",
+    caregiver: "Caregiver",
+    rn: "RN",
+    manager: "Manager",
+    family_login: "Family",
+    admin: "Admin",
+    or_sign_in_email: "or sign in with email",
+    email: "Email",
+    enter_email: "Enter your email",
+    password_label: "Password",
+    enter_password: "Enter your password",
+    forgot_password: "Forgot password?",
+    signing_in: "Signing In...",
+    continue_google: "Continue with Google",
+    no_account: "Don't have an account?",
+    create_account: "Create one now",
     quick_log: "Quick Log",
     timeline: "Timeline",
     no_recent_activity: "No recent activity.",
@@ -161,9 +185,38 @@ const translations = {
     required_rn_onsite: "The Aged Care Act requires at least one Registered Nurse on-site and on duty at all times.",
     risk_sanction_msg: "This facility is at risk of regulatory sanction. The roster cannot be saved until coverage is secured.",
     missing_rn_for: "Missing RN for",
-    shift_word: "shift"
+    shift_word: "shift",
+    end_of_shift_summary: "End-of-Shift Summary",
+    generate_shift_summary: "Generate Shift Summary / 一键汇总今天",
+    no_events_logged: "No events logged this shift yet",
+    not_recorded_this_shift: "Not recorded this shift:",
+    generating_shift_summary: "Generating shift summary..."
   },
   zh: {
+    err_test_login: "使用测试账号登录失败。",
+    err_auth_disabled: "在您的 Firebase 控制台中禁用了电子邮件和密码登录。请启用它，或使用测试帐户。",
+    err_invalid_creds: "登录失败。请检查您的凭据。",
+    err_google_login: "使用 Google 登录失败: ",
+    system_title: "智能合规护理系统",
+    system_subtitle: "通过AI驱动的视觉观察、自动SIRS报告和智能合规护栏，保护长者的安全。",
+    welcome_back: "欢迎回来",
+    sign_in_to_access: "登录以访问您的仪表板",
+    staff_logins: "员工登录",
+    caregiver: "护工",
+    rn: "注册护士 (RN)",
+    manager: "经理",
+    family_login: "家属",
+    admin: "管理员",
+    or_sign_in_email: "或使用电子邮件登录",
+    email: "电子邮件",
+    enter_email: "输入您的电子邮件",
+    password_label: "密码",
+    enter_password: "输入您的密码",
+    forgot_password: "忘记密码？",
+    signing_in: "登录中...",
+    continue_google: "使用 Google 账号继续",
+    no_account: "还没有账号？",
+    create_account: "立即创建",
     quick_log: "快速记录",
     timeline: "时间线",
     no_recent_activity: "无近期活动。",
@@ -320,9 +373,38 @@ const translations = {
     required_rn_onsite: "《老年人护理法》规定任何时候都必须有至少一名注册护士在岗值班。",
     risk_sanction_msg: "该机构存在严重的合规制裁风险。在确保护士覆盖前，排班计划无法保存锁定。",
     missing_rn_for: "缺少注册护士：",
-    shift_word: "班次"
+    shift_word: "班次",
+    end_of_shift_summary: "下班汇总",
+    generate_shift_summary: "一键汇总今天",
+    no_events_logged: "本班次暂无记录",
+    not_recorded_this_shift: "本班次未记录：",
+    generating_shift_summary: "正在生成下班汇总..."
   },
   tl: {
+    err_test_login: "Nabigong mag-login gamit ang test account.",
+    err_auth_disabled: "Naka-disable ang pag-sign in sa Email at Password sa iyong Firebase console. Paki-enable ito, o gumamit ng mga test account.",
+    err_invalid_creds: "Nabigong mag-login. Pakisuri ang iyong mga kredensyal.",
+    err_google_login: "Nabigong mag-sign in gamit ang Google: ",
+    system_title: "Smart Compliant Care System",
+    system_subtitle: "Pagprotekta sa mga residente gamit ang AI-driven na visual observations, automated SIRS reporting, at intelligent compliance guardrails.",
+    welcome_back: "Maligayang Pagbabalik",
+    sign_in_to_access: "Mag-sign in para ma-access ang iyong dashboard",
+    staff_logins: "Mga Login ng Staff",
+    caregiver: "Caregiver",
+    rn: "RN",
+    manager: "Manager",
+    family_login: "Pamilya",
+    admin: "Admin",
+    or_sign_in_email: "o mag-sign in gamit ang email",
+    email: "Email",
+    enter_email: "Ilagay ang iyong email",
+    password_label: "Password",
+    enter_password: "Ilagay ang iyong password",
+    forgot_password: "Nakalimutan ang password?",
+    signing_in: "Nagsa-sign In...",
+    continue_google: "Magpatuloy sa Google",
+    no_account: "Wala pang account?",
+    create_account: "Gumawa ngayon",
     quick_log: "Mabilis na Tala",
     timeline: "Timeline",
     no_recent_activity: "Walang kamakailang aktibidad.",
@@ -479,7 +561,12 @@ const translations = {
     required_rn_onsite: "Ang Aged Care Act ay nangangailangan ng hindi bababa sa isang Registered Nurse on-site sa lahat ng oras.",
     risk_sanction_msg: "Ang pasilidad na ito ay nasa panganib ng regulatory sanction. Hindi mai-save ang roster.",
     missing_rn_for: "Kulang sa RN para sa",
-    shift_word: "shift"
+    shift_word: "shift",
+    end_of_shift_summary: "Buod sa Pagtatapos ng Shift",
+    generate_shift_summary: "Bumuo ng Buod ng Shift",
+    no_events_logged: "Wala pang nakatalang kaganapan sa shift na ito",
+    not_recorded_this_shift: "Hindi nai-record sa shift na ito:",
+    generating_shift_summary: "Bumubuo ng buod ng shift..."
   }
 };
 
@@ -493,7 +580,7 @@ const LanguageContext = createContext<{
 
 export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
   const [lang, setLangState] = useState<Language>(() => {
-    return (localStorage.getItem('preferredLang') as Language) || 'en';
+    return (localStorage.getItem('preferredLang') as Language) || 'zh';
   });
   
   const setLang = (newLang: Language) => {

@@ -16,7 +16,7 @@ export const mockResidents: Resident[] = [
   {
     id: "2",
     name: "Arthur Pendelton",
-    room: "Room 205",
+    room: "Room 102",
     avatarUrl: "https://i.pravatar.cc/150?u=arthur",
     statusColor: "yellow",
     bathStatus: "due",
@@ -63,8 +63,8 @@ export const mockResidents: Resident[] = [
   },
   {
     id: "6",
-    name: "Betty White",
-    room: "Room 306",
+    name: "Joyce Reynolds",
+    room: "Room 101",
     avatarUrl: "https://i.pravatar.cc/150?u=betty",
     statusColor: "green",
     bathStatus: "done",

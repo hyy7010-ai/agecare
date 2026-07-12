@@ -51,7 +51,7 @@ export const Login: React.FC = () => {
         navigate("/");
         return;
       } catch (err: any) {
-        setError("Failed to login with test account.");
+        setError(t('err_test_login'));
         setLoading(false);
         return;
       }
@@ -64,11 +64,9 @@ export const Login: React.FC = () => {
       navigate("/");
     } catch (err: any) {
       if (err.code === "auth/operation-not-allowed") {
-        setError(
-          "Email & Password sign-in is disabled in your Firebase console. Please enable it, or use test accounts.",
-        );
+        setError(t('err_auth_disabled'));
       } else {
-        setError("Failed to login. Please check your credentials.");
+        setError(t('err_invalid_creds'));
       }
     } finally {
       setLoading(false);
@@ -82,7 +80,7 @@ export const Login: React.FC = () => {
       navigate("/");
     } catch (err: any) {
       if (err.code !== "auth/popup-closed-by-user") {
-        setError("Failed to sign in with Google: " + err.message);
+        setError(t('err_google_login') + err.message);
       }
     }
   };
@@ -122,11 +120,10 @@ export const Login: React.FC = () => {
 
         <div className="relative z-10 max-w-lg">
           <h1 className="text-5xl font-bold text-white leading-tight mb-6">
-            Smart Compliant Care System
+            {t('system_title')}
           </h1>
           <p className="text-indigo-200 text-lg leading-relaxed">
-            Protecting residents with AI-driven visual observations, automated
-            SIRS reporting, and intelligent compliance guardrails.
+            {t('system_subtitle')}
           </p>
         </div>
 
@@ -158,9 +155,9 @@ export const Login: React.FC = () => {
                 <Activity className="h-8 w-8" />
               </div>
             </div>
-            <h2 className="text-3xl font-bold text-slate-900">Welcome Back</h2>
+            <h2 className="text-3xl font-bold text-slate-900">{t('welcome_back')}</h2>
             <p className="text-slate-500 mt-2">
-              Sign in to access your dashboard
+              {t('sign_in_to_access')}
             </p>
           </div>
 
@@ -175,7 +172,7 @@ export const Login: React.FC = () => {
           <div className="bg-slate-100 rounded-2xl p-6 border border-slate-200">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse"></span>
-              Staff Logins
+              {t('staff_logins')}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -189,7 +186,7 @@ export const Login: React.FC = () => {
               >
                 <UserCircle className={`w-6 h-6 mb-2 transition-colors ${activeRole === "caregiver" ? "text-indigo-600" : "text-slate-400 group-hover:text-indigo-600"}`} />
                 <span className={`text-sm font-medium ${activeRole === "caregiver" ? "text-indigo-900" : "text-slate-700 group-hover:text-indigo-900"}`}>
-                  Caregiver
+                  {t('caregiver')}
                 </span>
               </button>
               <button
@@ -203,7 +200,7 @@ export const Login: React.FC = () => {
               >
                 <HeartPulse className={`w-6 h-6 mb-2 transition-colors ${activeRole === "rn" ? "text-teal-600" : "text-slate-400 group-hover:text-teal-600"}`} />
                 <span className={`text-sm font-medium ${activeRole === "rn" ? "text-teal-900" : "text-slate-700 group-hover:text-teal-900"}`}>
-                  RN
+                  {t('rn')}
                 </span>
               </button>
               <button
@@ -217,7 +214,7 @@ export const Login: React.FC = () => {
               >
                 <Users className={`w-6 h-6 mb-2 transition-colors ${activeRole === "manager" ? "text-amber-600" : "text-slate-400 group-hover:text-amber-600"}`} />
                 <span className={`text-sm font-medium ${activeRole === "manager" ? "text-amber-900" : "text-slate-700 group-hover:text-amber-900"}`}>
-                  Manager
+                  {t('manager')}
                 </span>
               </button>
               <button
@@ -231,7 +228,7 @@ export const Login: React.FC = () => {
               >
                 <HeartPulse className={`w-6 h-6 mb-2 transition-colors ${activeRole === "family" ? "text-pink-600" : "text-slate-400 group-hover:text-pink-600"}`} />
                 <span className={`text-sm font-medium ${activeRole === "family" ? "text-pink-900" : "text-slate-700 group-hover:text-pink-900"}`}>
-                  Family
+                  {t('family_login')}
                 </span>
               </button>
               <button
@@ -245,7 +242,7 @@ export const Login: React.FC = () => {
               >
                 <ShieldAlert className={`w-6 h-6 mb-2 transition-colors ${activeRole === "admin" ? "text-white" : "text-slate-400 group-hover:text-white"}`} />
                 <span className={`text-sm font-medium ${activeRole === "admin" ? "text-white" : "text-slate-300 group-hover:text-white"}`}>
-                  Admin
+                  {t('admin')}
                 </span>
               </button>
             </div>
@@ -254,7 +251,7 @@ export const Login: React.FC = () => {
           <div className="relative flex items-center py-2">
             <div className="flex-grow border-t border-slate-200"></div>
             <span className="flex-shrink-0 mx-4 text-slate-400 text-sm">
-              or sign in with email
+              {t('or_sign_in_email')}
             </span>
             <div className="flex-grow border-t border-slate-200"></div>
           </div>
@@ -262,27 +259,27 @@ export const Login: React.FC = () => {
           <form onSubmit={handleEmailLogin} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Email
+                {t('email')}
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                placeholder="Enter your email"
+                placeholder={t('enter_email')}
                 required
               />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-sm font-medium text-slate-700">
-                  Password
+                  {t('password_label')}
                 </label>
                 <Link
                   to="/forgot-password"
                   className="text-sm text-indigo-600 hover:text-indigo-700 font-medium tracking-tight"
                 >
-                  Forgot password?
+                  {t('forgot_password')}
                 </Link>
               </div>
               <input
@@ -290,7 +287,7 @@ export const Login: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
-                placeholder="Enter your password"
+                placeholder={t('enter_password')}
                 required
               />
             </div>
@@ -299,7 +296,7 @@ export const Login: React.FC = () => {
               disabled={loading}
               className="w-full bg-indigo-600 text-white py-3 rounded-xl hover:bg-indigo-700 font-medium transition-all shadow-sm shadow-indigo-200 disabled:opacity-50"
             >
-              {loading ? "Signing In..." : t('sign_in')}
+              {loading ? t('signing_in') : t('sign_in')}
             </button>
           </form>
 
@@ -326,16 +323,16 @@ export const Login: React.FC = () => {
                 fill="#EA4335"
               />
             </svg>
-            Continue with Google
+            {t('continue_google')}
           </button>
 
           <div className="text-center text-sm text-slate-500 font-medium">
-            Don't have an account?{" "}
+            {t('no_account')}{" "}
             <Link
               to="/register"
               className="text-indigo-600 hover:text-indigo-700 transition-colors"
             >
-              Create one now
+              {t('create_account')}
             </Link>
           </div>
         </div>

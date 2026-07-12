@@ -583,6 +583,77 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     }
   });
 
+  // API Route: End-of-Shift Summary
+  app.post('/api/shift-summary', express.json(), async (req, res) => {
+    try {
+      const { events, residentName, language = "en" } = req.body;
+      if (!events || !Array.isArray(events) || events.length === 0) {
+        return res.status(400).json({ error: 'No events provided for summary.' });
+      }
+
+      const prompt = `
+        You are an Australian aged care documentation assistant.
+        Your task is to generate an end-of-shift progress note based on the provided events, aligned with the Strengthened Aged Care Quality Standards.
+        
+        Guidelines:
+        - Only use the facts from the provided events. DO NOT invent or assume any unrecorded facts, vitals, or activities.
+        - Group the summary logically by ADL categories (e.g., nutrition, hygiene, continence, mobility, observations).
+        - Preserve key timestamps from the events.
+        - If a specific ADL category (nutrition, hygiene, continence, mobility) has no recorded events today, list a section at the very end titled "Not recorded this shift:" followed by a comma-separated list of those missing categories. Do not invent content for them.
+        
+        CRITICAL TASK: Detect the language used in the event notes. If they are NOT primarily English, translate the final English note back into that detected language as a 'nativeConfirmation' so the carer can verify the record. If the input is pure English, leave 'nativeConfirmation' empty.
+        
+        Resident Name: ${residentName}
+        Events:
+        ${JSON.stringify(events, null, 2)}
+        
+        CRITICAL FORMATTING INSTRUCTION: The values for 'notRecorded' MUST be an array of strings in English. The 'englishNote' MUST be written in professional English.
+        Return your response in structured JSON format with these exact keys:
+        - englishNote: string (the professional progress note in English, plain text)
+        - nativeConfirmation: string (the translated confirmation in the carer's native language, or empty if English)
+        - notRecorded: array of strings (e.g., ["hygiene", "mobility"], empty array if everything was recorded)
+      `;
+
+      const response = await generateWithRetry({
+        model: 'gemini-3.5-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              englishNote: { type: Type.STRING },
+              nativeConfirmation: { type: Type.STRING },
+              notRecorded: { 
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ["englishNote", "nativeConfirmation", "notRecorded"]
+          }
+        }
+      });
+
+      let rawText = response.text || '';
+      let parsedResult;
+      try {
+        rawText = rawText.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+        parsedResult = JSON.parse(rawText);
+      } catch (e: any) {
+        parsedResult = { englishNote: rawText.replace(/[\*#]/g, '').trim(), nativeConfirmation: '', notRecorded: [] };
+      }
+
+      res.json({ result: parsedResult });
+    } catch (error: any) {
+      console.error('Shift Summary API Error:', error);
+      let errorMsg = sanitizeErrorMessage(error.message || 'Failed to generate shift summary.');
+      if (errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
+        errorMsg = 'AI API rate limit (quota) exceeded. Please wait a moment and try again.';
+      }
+      res.status(500).json({ error: errorMsg });
+    }
+  });
+
   // API Route: Generate Daily Summary
   app.post('/api/summary', async (req, res) => {
     try {

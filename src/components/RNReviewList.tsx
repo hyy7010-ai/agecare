@@ -23,8 +23,9 @@ export function RNReviewList({
   onConfirmReview,
 }: RNReviewListProps) {
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
+  const [rnLiabilityChecked, setRnLiabilityChecked] = useState(false);
   const selectedReview = pendingReviews.find((r) => r.id === selectedReviewId);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   const handleAddNote = () => {
     const note = window.prompt("Enter RN notes or override details:", "");
@@ -41,7 +42,7 @@ export function RNReviewList({
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
         <button
-          onClick={selectedReviewId ? () => setSelectedReviewId(null) : onBack}
+          onClick={selectedReviewId ? () => { setSelectedReviewId(null); setRnLiabilityChecked(false); } : onBack}
           className="p-2 hover:bg-slate-200 rounded-full transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-slate-600" />
@@ -63,7 +64,7 @@ export function RNReviewList({
               {pendingReviews.map((review) => (
                 <div
                   key={review.id}
-                  onClick={() => setSelectedReviewId(review.id)}
+                  onClick={() => { setSelectedReviewId(review.id); setRnLiabilityChecked(false); }}
                   className="p-6 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-6"
                 >
                   {review.photoUrl ? (
@@ -272,6 +273,35 @@ export function RNReviewList({
                 </div>
               )}
 
+              {/* Patient Consent Status & RN Clinical Accountability Sign-off */}
+              <div className="mt-6 p-4 rounded-xl border border-indigo-100 bg-indigo-50/20 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 p-2.5 rounded-lg">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>
+                    {lang === "zh"
+                      ? "长者隐私知情同意：已验证（照护团队已确认授权符合 1988 隐私法）"
+                      : "Resident Consent: Verified (Confirmed by Caregiver under Privacy Act 1988 / APPs)"}
+                  </span>
+                </div>
+                
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rnLiabilityChecked}
+                    onChange={(e) => setRnLiabilityChecked(e.target.checked)}
+                    className="mt-1 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div className="text-xs text-slate-700 font-medium font-sans">
+                    <span className="font-bold text-indigo-800 block mb-0.5">
+                      {lang === "zh" ? "✍️ 注册护士临床与法律签字确认" : "✍️ Registered Nurse Legal & Clinical Sign-off"}
+                    </span>
+                    {lang === "zh"
+                      ? "我在此签字确认：我作为注册护士（RN），已对该 AI 辅助生成的记录进行了临床核对与必要的修正。根据《健康从业者监管国家法》，我自愿承担该病程记录入档的全部临床与法律责任。"
+                      : "I hereby sign off: As a Registered Nurse, I have clinically reviewed this AI-assisted observation and accept full clinical and legal accountability for its entry into the resident's permanent medical record under the Health Practitioner Regulation National Law."}
+                  </div>
+                </label>
+              </div>
+
               <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col gap-4">
                 <p className="text-xs text-slate-400 text-center font-light">
                   {t("ai_observation_disclaimer")}
@@ -283,10 +313,16 @@ export function RNReviewList({
                   </button>
                   <button
                     onClick={() => {
+                      if (!rnLiabilityChecked) return;
                       onConfirmReview(selectedReview.id);
                       setSelectedReviewId(null);
                     }}
-                    className="py-3 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm"
+                    disabled={!rnLiabilityChecked}
+                    className={`py-3 font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-sm ${
+                      rnLiabilityChecked
+                        ? "bg-teal-600 hover:bg-teal-700 text-white cursor-pointer active:scale-[0.99]"
+                        : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    }`}
                   >
                     <CheckCircle className="w-4 h-4" />
                     {t('confirm_save_record')}

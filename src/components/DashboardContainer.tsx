@@ -35,6 +35,7 @@ import {
 import { seedDatabaseIfNeeded } from "../lib/seed";
 import { useAuth } from "../contexts/AuthContext";
 import { getOfflineQueue, removeQueueItem } from "../lib/offlineQueue";
+import { logAuditAction } from "../lib/audit";
 
 export const DashboardContainer: React.FC = () => {
   const { userProfile, logout } = useAuth();
@@ -57,6 +58,9 @@ export const DashboardContainer: React.FC = () => {
   const [familyAppreciation, setFamilyAppreciation] = useState<{name: string, time: string} | null>(null);
   const [offlineSyncCount, setOfflineSyncCount] = useState(0);
   const [quickLogState, setQuickLogState] = useState<{residentId: string, taskType: string} | null>(null);
+  const [sirsInitialData, setSirsInitialData] = useState<{description?: string, sirsResult?: any, residentName?: string}>({});
+  const [isRnCoverageLost, setIsRnCoverageLost] = useState(false);
+  const [shiftIsolation, setShiftIsolation] = useState(true);
 
 
   useEffect(() => {
@@ -218,7 +222,7 @@ export const DashboardContainer: React.FC = () => {
             medicalHistory = ["Skin tears (frequent)", "Arthritis"];
             medications = [{ name: "Paracetamol", dosage: "500mg", frequency: "As needed for pain" }];
           } else {
-             allergies = ["No known allergies"];
+            allergies = ["No known allergies"];
              medicalHistory = ["Hypertension"];
              medications = [{ name: "Metoprolol", dosage: "50mg", frequency: "Daily" }];
           }
@@ -274,8 +278,6 @@ export const DashboardContainer: React.FC = () => {
       unsubSirsEvents();
     };
   }, []);
-
-  const [sirsInitialData, setSirsInitialData] = useState<{description?: string, sirsResult?: any, residentName?: string}>({});
 
   const handleResidentClick = (id: string) => {
     setSelectedResidentId(id);
@@ -333,6 +335,14 @@ export const DashboardContainer: React.FC = () => {
     if (review) {
       try {
         if (review.aiResult.observationType === "care_note") {
+          await logAuditAction({
+            action: "RN_APPROVED_CARE_NOTE",
+            userId: userProfile?.uid || "unknown",
+            userEmail: userProfile?.email || "unknown",
+            userRole: userProfile?.role || "rn",
+            details: `RN approved AI-generated care note for resident ${review.residentId}`,
+            resourceId: review.residentId
+          });
           // Route care note reviews to dailyCareNotes
           await addDoc(collection(db, "dailyCareNotes"), {
             residentId: review.residentId,
@@ -342,6 +352,14 @@ export const DashboardContainer: React.FC = () => {
             timestamp: serverTimestamp(),
           });
         } else {
+          await logAuditAction({
+            action: "RN_APPROVED_OBSERVATION",
+            userId: userProfile?.uid || "unknown",
+            userEmail: userProfile?.email || "unknown",
+            userRole: userProfile?.role || "rn",
+            details: `RN approved AI-generated physical observation for resident ${review.residentId}`,
+            resourceId: review.residentId
+          });
           // Route physical skin or excrement observations to observations
           await addDoc(collection(db, "observations"), {
             residentId: review.residentId,
@@ -370,8 +388,6 @@ export const DashboardContainer: React.FC = () => {
   const clearAlert = () => {
     setGlobalSirsAlert(null);
   };
-
-  const [isRnCoverageLost, setIsRnCoverageLost] = useState(false);
 
   const handleGenerateHandover = async () => {
     setIsGeneratingHandover(true);
@@ -493,15 +509,45 @@ export const DashboardContainer: React.FC = () => {
   const canLogSirs = isCaregiver || isManager || isRN || isAdmin;
   const canDismissSirs = isManager || isAdmin;
 
-  // For local testing purposes, allow caregivers to see all residents
-  const visibleResidents = residents;
+  // Least Privilege / Shift Isolation Mode state (APP 11 compliance)
+  // If shift isolation is ON and user is a caregiver:
+  // - They only see full profiles of residents assigned to their active shift / wing (e.g., Joyce and Arthur - Room 101/102).
+  // - Other residents on different shifts/wings are de-identified (name is masked, health record hidden) to enforce the principle of least privilege.
+  const visibleResidents = residents.map(resident => {
+    if (shiftIsolation && isCaregiver) {
+      const isAssigned = resident.room.includes("101") || resident.room.includes("102") || resident.name.includes("Joyce") || resident.name.includes("Arthur");
+      if (!isAssigned) {
+        return {
+          ...resident,
+          name: `${lang === "zh" ? "房间号 " : "Room "}${resident.room.replace(/\D/g, '')} ${lang === "zh" ? "长者 (已去标识化)" : "Resident (De-identified)"}`,
+          avatarUrl: `https://ui-avatars.com/api/?name=D+I&background=cbd5e1`,
+          allergies: [lang === "zh" ? "无权限访问 (已去标识化)" : "Inaccessible (De-identified)"],
+          medicalHistory: [lang === "zh" ? "无权限访问 (已去标识化)" : "Inaccessible (De-identified)"],
+          medications: [],
+          deidentified: true
+        };
+      }
+    }
+    return resident;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       {/* Simulator Tools Bar (Top) */}
       <div className="bg-slate-800 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between z-50 relative border-b border-slate-900 shadow-sm gap-2">
         <div className="font-bold tracking-wider uppercase text-slate-300">{t('simulator')}</div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={() => setShiftIsolation(prev => !prev)} 
+              className={`px-3 py-1 rounded border transition-colors font-semibold ${
+                shiftIsolation 
+                  ? "bg-indigo-500 text-white border-indigo-400" 
+                  : "bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500 hover:text-white border-indigo-500/30"
+              }`}
+              title="Toggle Strict Role/Shift Isolation & De-identification under Privacy Act 1988 (APP 11)"
+            >
+              🔒 {shiftIsolation ? (lang === "zh" ? "班次数据隔离：开启 (APP 11合规)" : "Shift Isolation: ACTIVE (APP 11)") : (lang === "zh" ? "班次数据隔离：测试全显" : "Shift Isolation: DISABLED")}
+            </button>
             <button onClick={simulateFallAlert} className="bg-red-500/20 text-red-300 hover:bg-red-500 hover:text-white border border-red-500/30 px-3 py-1 rounded transition-colors font-medium">
               {t('trigger_iot_fall_alert')}
             </button>
